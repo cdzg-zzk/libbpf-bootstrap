@@ -1,0 +1,9 @@
+{
+    "C_Cpp.errorSquiggles": "enabled",
+    "files.associations": {
+        "bpf_core_read.h": "c",
+        "trace_helpers.h": "c",
+        "maps.bpf.h": "c",
+        "typeinfo": "c"
+    }
+}
