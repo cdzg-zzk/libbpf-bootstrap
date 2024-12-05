@@ -26,6 +26,7 @@
 #define FULL_MAX_ARGS_ARR 440
 #define LAST_ARG (FULL_MAX_ARGS_ARR - ARGSIZE)
 
+#define PF_KTHREAD		0x00200000	/* I am a kernel thread */
 #define TASK_RUNNING	0x00000000
 #define MUTEX_FLAG  1
 #define RWLOCK_FLAG  2
@@ -299,6 +300,15 @@ struct syscall_val_t {
 	u64 duration;
 	int ret;
 };
+struct syscall_count_t {
+	int counts;
+	u64 syscall_cost_time;
+};
+
+struct softirq_enter_t {
+	unsigned int vec_nr;
+	u64 timestamp;
+};
 
 struct softirq_val_t {
 	unsigned int vec_nr;
@@ -306,10 +316,15 @@ struct softirq_val_t {
 	u64 duration;
 };
 
+struct hardirq_enter_t {
+	unsigned int irq;
+	u64 timestamp;
+};
 struct hardirq_val_t {
 	char hardirq_name[32];
 	u64 timestamp;    // enter: enter_timestamp    exit: exit_timestamp;
 	u64 duration;
+	unsigned int irq;
 };
 
 

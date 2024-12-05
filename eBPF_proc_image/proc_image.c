@@ -579,7 +579,7 @@ static int print_schedule(void *ctx, void *data,unsigned long data_sz)
 
 // 	return 0;
 // }
-
+static long softirq_count = 0;
 static int print_syscall(void *ctx, void *data,unsigned long data_sz)
 {
 	switch(data_sz)
@@ -587,12 +587,16 @@ static int print_syscall(void *ctx, void *data,unsigned long data_sz)
 		case sizeof(struct syscall_val_t):
 			struct syscall_val_t* syscall_val = (struct syscall_val_t*)data;
 			printf("syscall time: %lld   syscall: %s   duration: %lld  ret: %d\n", syscall_val->timestamp, syscall_val->syscall_id<syscall_names_size?syscall_names[syscall_val->syscall_id]:"[Unknow syscall]", syscall_val->duration, syscall_val->ret);
+			break;
 		case sizeof(struct softirq_val_t):
+			softirq_count++;
 			struct softirq_val_t* soft_val = (struct softirq_val_t*)data;
-			printf("softirq time: %lld   softirq: %s   duration: %lld\n", soft_val->timestamp, soft_val->vec_nr<NR_SOFTIRQS?vec_names[soft_val->vec_nr]:"[Unknow softirq]", soft_val->duration);
+			printf("softirq time: %lld   softirq: %s   duration: %lld  count: %d\n", soft_val->timestamp, soft_val->vec_nr<NR_SOFTIRQS?vec_names[soft_val->vec_nr]:"[Unknow softirq]", soft_val->duration, softirq_count);
+			break;
 		case sizeof(struct hardirq_val_t):
 			struct hardirq_val_t* hardirq_val = (struct hardirq_val_t*)data;
 			printf("hardirq time: %lld    hardirq: %s    duration: %lld\n", hardirq_val->timestamp, hardirq_val->hardirq_name, hardirq_val->duration);
+			break;
 	}
 	
 	return 0;
