@@ -283,7 +283,13 @@ enum timestamp_type {
 	ONCPU,
 	WAKEUP,
 	WAKEUPNEW,
-	SYSCALL,
+	// SYSCALL,
+};
+enum interrup_type {
+	SYSCALL = 0,
+	SOFTIRQ = 1,
+	HARDIRQ = 2,
+	SIGNAL = 3,
 };
 struct timestamp_t {
 	__u64 timestamp;
@@ -327,5 +333,16 @@ struct hardirq_val_t {
 	unsigned int irq;
 };
 
-
+struct signal_handle_val_t {
+	// enum interrup_type type;
+	int sig;
+	u64 timestamp;
+	u64 duration;
+	int dummy[3];
+};
+struct signal_val_t {
+	// enum interrup_type type;
+	int sig;
+	u64 timestamp;
+};
 #endif /* __PROCESS_H */

@@ -373,3 +373,122 @@ int BPF_PROG(irq_handler_exit_btf, int irq, struct irqaction *action)
 
 //     return 0;
 // }
+
+
+// struct sigaction {
+// 	__sighandler_t sa_handler;
+// 	long unsigned int sa_flags;
+// 	__sigrestore_t sa_restorer;
+// 	sigset_t sa_mask;
+// };
+// struct k_sigaction {
+// 	struct sigaction sa;
+// };
+// struct ksignal {
+// 	struct k_sigaction ka;
+// 	kernel_siginfo_t info;
+// 	int sig;
+// };
+
+
+// // obj->bss
+// // user later
+// #define NR_HARDIRQS 100
+// int hardirq_counts[NR_HARDIRQS] = {};
+// __u64 hardirq_time[NR_HARDIRQS] = {};
+
+u64 signal_handle_start_time = 0;
+int handle_sig = 0;
+
+SEC("kprobe/handle_signal")
+int BPF_KPROBE(trace_handle_signal_entry, struct ksignal *ksig, struct pt_regs *regs)
+{
+    struct sc_ctrl *syscall_ctrl;
+	syscall_ctrl = bpf_map_lookup_elem(&sc_ctrl_map, &key);
+	if(!syscall_ctrl || !syscall_ctrl->sc_func)
+		return 0;
+    pid_t pid = bpf_get_current_pid_tgid();
+    int target_pid = syscall_ctrl->target_pid;
+    bpf_printk("entry signal pid: %d  signal: %d\n", pid, BPF_CORE_READ(ksig, sig));
+
+    if(pid != target_pid)
+        return 0;
+    int sig = (short int)BPF_CORE_READ(ksig, sig);
+    u64 current_timestamp = bpf_ktime_get_ns();
+    if(signal_handle_start_time == 0 && handle_sig == 0) {
+        signal_handle_start_time = current_timestamp;
+        handle_sig = sig;
+    } else {
+        bpf_printk("signal start time error\n");
+    }
+    return 0;
+}
+
+// 为什么return handle_signal后sig就变为0了
+SEC("kretprobe/handle_signal")
+int BPF_KRETPROBE(trace_handle_signal_exit)
+{
+    struct sc_ctrl *syscall_ctrl;
+	syscall_ctrl = bpf_map_lookup_elem(&sc_ctrl_map, &key);
+	if(!syscall_ctrl || !syscall_ctrl->sc_func)
+		return 0;
+    pid_t pid = bpf_get_current_pid_tgid();
+    int target_pid = syscall_ctrl->target_pid;
+
+    if(pid != target_pid)
+        return 0;
+
+    u64 current_timestamp = bpf_ktime_get_ns();
+
+    if(signal_handle_start_time == 0) {
+        bpf_printk("signal exit time error\n");
+        return 0;
+    }
+    u64 delta = current_timestamp - signal_handle_start_time;
+    signal_handle_start_time = 0;
+    if(handle_sig == 0) {
+        bpf_printk("signal exit sig error\n");
+        return 0;
+    }
+    int sig = handle_sig;
+    handle_sig = 0;
+    struct signal_handle_val_t *val;
+    val = bpf_ringbuf_reserve(&syscall_rb, sizeof(*val), 0);
+    if(!val) {
+        return 0;
+    }
+    val->timestamp = current_timestamp;
+
+    val->duration = delta;
+    val->sig = sig;
+    // val->type = SIGNAL;
+    bpf_ringbuf_submit(val, 0);
+    bpf_printk("entry signal pid: %d  delta: %lld\n", sig, delta);
+    return 0;
+}
+
+
+SEC("tp_btf/signal_deliver")
+int BPF_PROG(signal_deliver_btf, int signr, kernel_siginfo_t* info, struct k_sigaction *ka)
+{
+    struct sc_ctrl *syscall_ctrl;
+	syscall_ctrl = bpf_map_lookup_elem(&sc_ctrl_map, &key);
+	if(!syscall_ctrl || !syscall_ctrl->sc_func)
+		return 0;
+    pid_t pid = bpf_get_current_pid_tgid();
+    int target_pid = syscall_ctrl->target_pid;
+    bpf_printk("deliver sig: %d\n", signr);
+    if(pid != target_pid)
+        return 0;
+    u64 current_timestamp = bpf_ktime_get_ns();
+    struct signal_val_t *val;
+    val = bpf_ringbuf_reserve(&syscall_rb, sizeof(*val), 0);
+    if(!val) {
+        return 0;
+    }
+    val->timestamp = current_timestamp;
+    val->sig = signr;
+
+    bpf_ringbuf_submit(val, 0);
+    return 0;
+}
