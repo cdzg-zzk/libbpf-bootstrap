@@ -283,6 +283,7 @@ enum timestamp_type {
 	ONCPU,
 	WAKEUP,
 	WAKEUPNEW,
+	SWITCH,
 	// SYSCALL,
 };
 enum interrup_type {
@@ -295,7 +296,7 @@ struct timestamp_t {
 	__u64 timestamp;
 	enum timestamp_type ts_type; 
 };
-
+// interrupt
 struct syscall_enter_t {
 	int syscall_id;
 	u64 timestamp;    // enter: enter_timestamp    exit: exit_timestamp;
@@ -306,10 +307,10 @@ struct syscall_val_t {
 	u64 duration;
 	int ret;
 };
-struct syscall_count_t {
-	int counts;
-	u64 syscall_cost_time;
-};
+// struct syscall_count_t {
+// 	int counts;
+// 	u64 syscall_cost_time;
+// };
 
 struct softirq_enter_t {
 	unsigned int vec_nr;

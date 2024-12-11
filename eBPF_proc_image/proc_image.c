@@ -133,7 +133,7 @@ static struct ksyms *sched_ksyms = NULL;
 
 char *task_state[] = {"TASK_RUNNING", "TASK_INTERRUPTIBLE", "TASK_UNINTERRUPTIBLE", 
                       "", "__TASK_STOPPED", "", "", "", "__TASK_TRACED"};
-char *timestamp_state[] = {"OFFCPU", "ONCPU", "WAKEUP", "WAKEUPNEW", "SYSCALL"};
+char *timestamp_state[] = {"OFFCPU", "ONCPU", "WAKEUP", "WAKEUPNEW", "SWITCH", "SYSCALL"};
 
 //u32 syscalls[NR_syscalls] = {};
 
@@ -586,24 +586,24 @@ static int print_syscall(void *ctx, void *data,unsigned long data_sz)
 	{
 		case sizeof(struct syscall_val_t):
 			struct syscall_val_t* syscall_val = (struct syscall_val_t*)data;
-			printf("syscall time: %llu   syscall: %s   duration: %llu  ret: %d\n", syscall_val->timestamp, syscall_val->syscall_id<syscall_names_size?syscall_names[syscall_val->syscall_id]:"[Unknow syscall]", syscall_val->duration, syscall_val->ret);
+			printf("data size: %ld   syscall time: %llu   syscall: %s   duration: %llu  ret: %d\n", data_sz, syscall_val->timestamp, syscall_val->syscall_id<syscall_names_size?syscall_names[syscall_val->syscall_id]:"[Unknow syscall]", syscall_val->duration, syscall_val->ret);
 			break;
 		case sizeof(struct softirq_val_t):
 			softirq_count++;
 			struct softirq_val_t* soft_val = (struct softirq_val_t*)data;
-			printf("softirq time: %llu   softirq: %s   duration: %llu  count: %d\n", soft_val->timestamp, soft_val->vec_nr<NR_SOFTIRQS?vec_names[soft_val->vec_nr]:"[Unknow softirq]", soft_val->duration, softirq_count);
+			printf("data size: %ld   softirq time: %llu   softirq: %s   duration: %llu  count: %d\n", data_sz, soft_val->timestamp, soft_val->vec_nr<NR_SOFTIRQS?vec_names[soft_val->vec_nr]:"[Unknow softirq]", soft_val->duration, softirq_count);
 			break;
 		case sizeof(struct hardirq_val_t):
 			struct hardirq_val_t* hardirq_val = (struct hardirq_val_t*)data;
-			printf("hardirq time: %llu    hardirq: %s    duration: %llu\n", hardirq_val->timestamp, hardirq_val->hardirq_name, hardirq_val->duration);
+			printf("data size: %ld   hardirq time: %llu    hardirq: %s    duration: %llu\n", data_sz, hardirq_val->timestamp, hardirq_val->hardirq_name, hardirq_val->duration);
 			break;
 		case sizeof(struct signal_handle_val_t):
 			struct signal_handle_val_t *signal_handle_val = (struct signal_handle_val_t*)data;
-			printf("signal time: %llu    signal: %d    duration: %llu\n", signal_handle_val->timestamp, signal_handle_val->sig, signal_handle_val->duration);
+			printf("data size: %ld   signal time: %llu    signal: %d    duration: %llu\n", data_sz, signal_handle_val->timestamp, signal_handle_val->sig, signal_handle_val->duration);
 			break;
 		case sizeof(struct signal_val_t):
 			struct signal_val_t *signal_val = (struct signal_val_t*)data;
-			printf("signal time: %llu    signal: %d\n", signal_val->timestamp, signal_val->sig);
+			printf("data size: %ld   signal time: %llu    signal: %d\n", data_sz, signal_val->timestamp, signal_val->sig);
 			break;
 		default:
 			break;

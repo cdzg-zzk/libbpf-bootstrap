@@ -413,7 +413,7 @@ int BPF_KPROBE(trace_handle_signal_entry, struct ksignal *ksig, struct pt_regs *
 
     if(pid != target_pid)
         return 0;
-    int sig = (short int)BPF_CORE_READ(ksig, sig);
+    int sig = (int)BPF_CORE_READ(ksig, sig);
     u64 current_timestamp = bpf_ktime_get_ns();
     if(signal_handle_start_time == 0 && handle_sig == 0) {
         signal_handle_start_time = current_timestamp;

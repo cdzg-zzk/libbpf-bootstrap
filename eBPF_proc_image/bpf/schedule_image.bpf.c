@@ -444,7 +444,7 @@ static int handle_sched_switch(void *ctx, bool preempt, struct task_struct *prev
 	u64 timestamp = bpf_ktime_get_ns();
 	int pid = BPF_CORE_READ(prev, pid);
 	int cpu = bpf_get_smp_processor_id();
-	if (target_pid == pid) {
+	if (target_pid == pid) {   // target proc switch-out
         // bpf_printk("print Kernel stack\n");
 		/* To distinguish idle threads of different cores */
 		pid = pid == 0? cpu : pid;
@@ -481,33 +481,33 @@ static int handle_sched_switch(void *ctx, bool preempt, struct task_struct *prev
 		return 0;
 	pid = pid == 0 ? cpu : pid;
     // bpf_printk("print User stack\n");
-	bpf_map_update_elem(&oncpu_time, &pid, &timestamp, BPF_ANY);
+	bpf_map_update_elem(&oncpu_time, &pid, &timestamp, BPF_ANY);  // 可有可无
 	if(timestamp_ringbuf_out(&timestamp, ONCPU)) {
 		return 0;
 	}
-	valp = bpf_map_lookup_elem(&offcpu_value, &pid);
-	if (!valp)
-		return 0;
-	u64* offcpu_ns = bpf_map_lookup_elem(&offcpu_time, &pid);
-	if(!offcpu_ns) {
-		bpf_map_delete_elem(&offcpu_value, &pid);
-		return 0;
-	}
-
-
-	delta = (s64)(timestamp - *offcpu_ns);
-	if (delta < 0) {
-		bpf_map_delete_elem(&offcpu_value, &pid);
-		return 0;
-	}
-	delta /= 1000U;
-	// if (delta < min_block_ns || delta > max_block_ns)
-	// 	goto cleanup;
-	// valp = bpf_map_lookup_elem(&offcpu_info, keyp);
+	// valp = bpf_map_lookup_elem(&offcpu_value, &pid);
 	// if (!valp)
-	// 	goto cleanup;
-	// __sync_fetch_and_add(&valp->delta, delta);
-	valp->delta = (u64)delta;
+	// 	return 0;
+	// u64* offcpu_ns = bpf_map_lookup_elem(&offcpu_time, &pid);
+	// if(!offcpu_ns) {
+	// 	bpf_map_delete_elem(&offcpu_value, &pid);
+	// 	return 0;
+	// }
+
+
+	// delta = (s64)(timestamp - *offcpu_ns);
+	// if (delta < 0) {
+	// 	bpf_map_delete_elem(&offcpu_value, &pid);
+	// 	return 0;
+	// }
+	// delta /= 1000U;
+	// // if (delta < min_block_ns || delta > max_block_ns)
+	// // 	goto cleanup;
+	// // valp = bpf_map_lookup_elem(&offcpu_info, keyp);
+	// // if (!valp)
+	// // 	goto cleanup;
+	// // __sync_fetch_and_add(&valp->delta, delta);
+	// valp->delta = (u64)delta;
 	// ring buffer not used
 	// bpf_printk("target_comm: %s      next comm: %s         cpu:%d    offcpu_time delta: %lld\n", BPF_CORE_READ(next, comm), valp->next_comm, valp->cpu, valp->delta);
 	return 0;
@@ -584,7 +584,10 @@ static int wakeup(void *ctx, struct task_struct *p, int target_pid, enum timesta
 	}
 	val->delta = (u64)delta;
 	val->wakeup_kern_stack_id = bpf_get_stackid(ctx, &stackmap, 0);
-	val->wakeup_user_stack_id = bpf_get_stackid(ctx, &stackmap, BPF_F_USER_STACK);
+	if (BPF_CORE_READ(p, flags) & PF_KTHREAD)
+		val->wakeup_user_stack_id = -1;
+	else
+		val->wakeup_user_stack_id = bpf_get_stackid(ctx, &stackmap, BPF_F_USER_STACK);
 	bpf_get_current_comm(&val->waker_proc_comm, sizeof(val->waker_proc_comm));
 
 	// bpf_probe_read_kernel_str(&val.target_proc_comm, sizeof(p->comm), BPF_CORE_READ(p, comm));
@@ -620,4 +623,25 @@ int BPF_PROG(sched_wakeup_new, struct task_struct *p)
         return 0;
 	int target_pid = sched_ctrl->target_pid;
 	return wakeup(ctx, p, target_pid, WAKEUPNEW);
+}
+
+
+
+SEC("kprobe/finish_task_switch.isra.0") 
+int BPF_KPROBE(finish_task_switch, struct task_struct *prev) {
+	struct sched_ctrl *sched_ctrl;
+    sched_ctrl = bpf_map_lookup_elem(&sched_ctrl_map,&key);
+    if(!sched_ctrl || !sched_ctrl->sched_func)
+        return 0;
+	int target_pid = sched_ctrl->target_pid;
+    pid_t pid = BPF_CORE_READ(prev, pid);
+	if(pid != target_pid) {
+		return 0;
+	}
+	u64 timestamp = bpf_ktime_get_ns();
+	if(timestamp_ringbuf_out(&timestamp, SWITCH)) {
+		return 0;
+	}
+    
+    return 0;
 }
