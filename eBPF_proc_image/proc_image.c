@@ -1316,7 +1316,7 @@ int main(int argc, char **argv)
 
 			// 创建新线程，设置 output
 			if(!env.create_thread){
-				printf("2\n");
+				printf("a second pass\n");
 
 				if (pthread_create(&thread_enable, NULL, enable_function, NULL) != 0) {
 					perror("pthread_create");

@@ -256,7 +256,7 @@ struct offcpu_val_t {
 	// __u32 tgid;
 	int user_stack_id;
 	int kern_stack_id;
-	__u64 delta;
+	// __u64 delta;
 	// __u64 offcpu_start;
 	int state;
 	int cpu;
@@ -275,7 +275,8 @@ struct wakeup_value_t {
 	char waker_proc_comm[TASK_COMM_LEN];
 	int wakeup_kern_stack_id;
 	int wakeup_user_stack_id;
-	int delta;
+	int cpu;
+	// int delta;
 };
 
 enum timestamp_type {

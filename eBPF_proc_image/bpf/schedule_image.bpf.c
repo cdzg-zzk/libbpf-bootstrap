@@ -247,44 +247,7 @@ char LICENSE[] SEC("license") = "Dual BSD/GPL";
 //     return 0;
 // }
 
-// SEC("tracepoint/sched/sched_process_exit")
-// int sched_process_exit(void *ctx)
-// {
-//     struct sched_ctrl *sched_ctrl;
-// 	sched_ctrl = bpf_map_lookup_elem(&sched_ctrl_map,&key);
-// 	if(!sched_ctrl || !sched_ctrl->sched_func)
-// 		return 0;
-    
-//     struct task_struct *p = (struct task_struct *)bpf_get_current_task();
-//     pid_t pid = BPF_CORE_READ(p,pid);
 
-//     int cpu = bpf_get_smp_processor_id();
-//     struct proc_id pd = CREATE_PD(pid, cpu);
-//     struct schedule_event *schedule_event, *target_event;
-
-
-
-//     // 从哈希表中删除退出进程的数据，防止哈希表溢出statt
-//     schedule_event = bpf_map_lookup_elem(&proc_schedule,&pd);
-//     if(schedule_event){
-//         bpf_map_delete_elem(&proc_schedule,&pd);
-//     }
-
-
-//     // 若目标进程退出，删除 target_schedule map 中的数据
-//     if(sched_ctrl->target_pid == pid){
-//         // target_event = bpf_map_lookup_elem(&target_schedule,&key);
-//         // if(target_event){
-//         //     // 将 count 设置成 0 即可实现目标进程退出标志
-//         //     target_event->count = 0;
-//         // }
-//         sched_ctrl->sched_func = false;
-//         bpf_map_update_elem(&sched_ctrl_map, &key, sched_ctrl, BPF_ANY);
-//     }
-
-
-//     return 0;
-// }
 
 
 // // SEC("tp_btf/sched_stat_sleep")
@@ -374,19 +337,19 @@ struct {
 	__uint(max_entries,256 * 10240);
 } sched_rb SEC(".maps");
 
-struct {
-	__uint(type, BPF_MAP_TYPE_HASH);
-	__uint(max_entries, MAX_ENTRIES);
-	__type(key, int);
-	__type(value, u64);
-} offcpu_time SEC(".maps");
+// struct {
+// 	__uint(type, BPF_MAP_TYPE_HASH);
+// 	__uint(max_entries, MAX_ENTRIES);
+// 	__type(key, int);
+// 	__type(value, u64);
+// } offcpu_time SEC(".maps");
 
-struct {
-	__uint(type, BPF_MAP_TYPE_HASH);
-	__uint(max_entries, MAX_ENTRIES);
-	__type(key, int);
-	__type(value, u64);
-} oncpu_time SEC(".maps");
+// struct {
+// 	__uint(type, BPF_MAP_TYPE_HASH);
+// 	__uint(max_entries, MAX_ENTRIES);
+// 	__type(key, int);
+// 	__type(value, u64);
+// } oncpu_time SEC(".maps");
 
 struct {
 	__uint(type, BPF_MAP_TYPE_ARRAY);
@@ -395,12 +358,12 @@ struct {
 	__type(value, struct sched_ctrl);
 } sched_ctrl_map SEC(".maps");
 
-struct {
-	__uint(type, BPF_MAP_TYPE_HASH);
-	__type(key, int);
-	__type(value, struct offcpu_val_t);
-	__uint(max_entries, MAX_ENTRIES);
-} offcpu_value SEC(".maps");
+// struct {
+// 	__uint(type, BPF_MAP_TYPE_HASH);
+// 	__type(key, int);
+// 	__type(value, struct offcpu_val_t);
+// 	__uint(max_entries, MAX_ENTRIES);
+// } offcpu_value SEC(".maps");
 
 struct {
 	__uint(type, BPF_MAP_TYPE_STACK_TRACE);
@@ -450,7 +413,7 @@ static int handle_sched_switch(void *ctx, bool preempt, struct task_struct *prev
 		pid = pid == 0? cpu : pid;
 		// val.pid = pid;
 		// i_key.key.tgid = BPF_CORE_READ(prev, tgid);
-		bpf_map_update_elem(&offcpu_time, &pid, &timestamp, BPF_ANY);
+		// bpf_map_update_elem(&offcpu_time, &pid, &timestamp, BPF_ANY);
 
 		if(timestamp_ringbuf_out(&timestamp, OFFCPU))
 		{
@@ -469,7 +432,7 @@ static int handle_sched_switch(void *ctx, bool preempt, struct task_struct *prev
 		val->kern_stack_id = bpf_get_stackid(ctx, &stackmap, 0);
 		// bpf_map_update_elem(&offcpu_start, &pid, &key, BPF_ANY);
 		bpf_probe_read_kernel_str(&val->next_comm, sizeof(next->comm), BPF_CORE_READ(next, comm));
-		val->delta = 0;
+		// val->delta = 0;
 		val->state = BPF_CORE_READ(prev, __state);
 		val->cpu = cpu;
 		// bpf_map_update_elem(&offcpu_value, &pid, &val, BPF_ANY);
@@ -481,7 +444,7 @@ static int handle_sched_switch(void *ctx, bool preempt, struct task_struct *prev
 		return 0;
 	pid = pid == 0 ? cpu : pid;
     // bpf_printk("print User stack\n");
-	bpf_map_update_elem(&oncpu_time, &pid, &timestamp, BPF_ANY);  // 可有可无
+	// bpf_map_update_elem(&oncpu_time, &pid, &timestamp, BPF_ANY);  // 可有可无
 	if(timestamp_ringbuf_out(&timestamp, ONCPU)) {
 		return 0;
 	}
@@ -582,7 +545,8 @@ static int wakeup(void *ctx, struct task_struct *p, int target_pid, enum timesta
 	if(!val) {
 		return 0;
 	}
-	val->delta = (u64)delta;
+	// val->delta = (u64)delta;
+	val->cpu = cpu;
 	val->wakeup_kern_stack_id = bpf_get_stackid(ctx, &stackmap, 0);
 	if (BPF_CORE_READ(p, flags) & PF_KTHREAD)
 		val->wakeup_user_stack_id = -1;
@@ -645,3 +609,44 @@ int BPF_KPROBE(finish_task_switch, struct task_struct *prev) {
     
     return 0;
 }
+
+
+
+// SEC("tracepoint/sched/sched_process_exit")
+// int sched_process_exit(void *ctx)
+// {
+//     struct sched_ctrl *sched_ctrl;
+// 	sched_ctrl = bpf_map_lookup_elem(&sched_ctrl_map,&key);
+// 	if(!sched_ctrl || !sched_ctrl->sched_func)
+// 		return 0;
+    
+//     struct task_struct *p = (struct task_struct *)bpf_get_current_task();
+//     pid_t pid = BPF_CORE_READ(p,pid);
+
+//     int cpu = bpf_get_smp_processor_id();
+//     struct proc_id pd = CREATE_PD(pid, cpu);
+//     struct schedule_event *schedule_event, *target_event;
+
+
+
+//     // 从哈希表中删除退出进程的数据，防止哈希表溢出statt
+//     schedule_event = bpf_map_lookup_elem(&proc_schedule,&pd);
+//     if(schedule_event){
+//         bpf_map_delete_elem(&proc_schedule,&pd);
+//     }
+
+
+//     // 若目标进程退出，删除 target_schedule map 中的数据
+//     if(sched_ctrl->target_pid == pid){
+//         // target_event = bpf_map_lookup_elem(&target_schedule,&key);
+//         // if(target_event){
+//         //     // 将 count 设置成 0 即可实现目标进程退出标志
+//         //     target_event->count = 0;
+//         // }
+//         sched_ctrl->sched_func = false;
+//         bpf_map_update_elem(&sched_ctrl_map, &key, sched_ctrl, BPF_ANY);
+//     }
+
+
+//     return 0;
+// }
