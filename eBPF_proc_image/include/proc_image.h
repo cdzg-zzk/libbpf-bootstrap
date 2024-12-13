@@ -26,6 +26,7 @@
 #define FULL_MAX_ARGS_ARR 440
 #define LAST_ARG (FULL_MAX_ARGS_ARR - ARGSIZE)
 
+#define PF_KTHREAD		0x00200000	/* I am a kernel thread */
 #define TASK_RUNNING	0x00000000
 #define MUTEX_FLAG  1
 #define RWLOCK_FLAG  2
@@ -255,7 +256,7 @@ struct offcpu_val_t {
 	// __u32 tgid;
 	int user_stack_id;
 	int kern_stack_id;
-	__u64 delta;
+	// __u64 delta;
 	// __u64 offcpu_start;
 	int state;
 	int cpu;
@@ -274,7 +275,8 @@ struct wakeup_value_t {
 	char waker_proc_comm[TASK_COMM_LEN];
 	int wakeup_kern_stack_id;
 	int wakeup_user_stack_id;
-	int delta;
+	int cpu;
+	// int delta;
 };
 
 enum timestamp_type {
@@ -282,13 +284,20 @@ enum timestamp_type {
 	ONCPU,
 	WAKEUP,
 	WAKEUPNEW,
-	SYSCALL,
+	SWITCH,
+	// SYSCALL,
+};
+enum interrup_type {
+	SYSCALL = 0,
+	SOFTIRQ = 1,
+	HARDIRQ = 2,
+	SIGNAL = 3,
 };
 struct timestamp_t {
 	__u64 timestamp;
 	enum timestamp_type ts_type; 
 };
-
+// interrupt
 struct syscall_enter_t {
 	int syscall_id;
 	u64 timestamp;    // enter: enter_timestamp    exit: exit_timestamp;
@@ -299,6 +308,15 @@ struct syscall_val_t {
 	u64 duration;
 	int ret;
 };
+// struct syscall_count_t {
+// 	int counts;
+// 	u64 syscall_cost_time;
+// };
+
+struct softirq_enter_t {
+	unsigned int vec_nr;
+	u64 timestamp;
+};
 
 struct softirq_val_t {
 	unsigned int vec_nr;
@@ -306,11 +324,27 @@ struct softirq_val_t {
 	u64 duration;
 };
 
+struct hardirq_enter_t {
+	unsigned int irq;
+	u64 timestamp;
+};
 struct hardirq_val_t {
 	char hardirq_name[32];
 	u64 timestamp;    // enter: enter_timestamp    exit: exit_timestamp;
 	u64 duration;
+	unsigned int irq;
 };
 
-
+struct signal_handle_val_t {
+	// enum interrup_type type;
+	int sig;
+	u64 timestamp;
+	u64 duration;
+	int dummy[3];
+};
+struct signal_val_t {
+	// enum interrup_type type;
+	int sig;
+	u64 timestamp;
+};
 #endif /* __PROCESS_H */
