@@ -15,6 +15,8 @@
 // author: zhangziheng0525@163.com
 //
 // user-mode helper functions for the process image
+#ifndef _HELPERS_H
+#define _HELPERS_H
 
 #define __ATTACH_UPROBE(skel, sym_name, prog_name, is_retprobe)  \
     do                                                           \
@@ -77,6 +79,11 @@ const char *lock_ctrl_path = "/sys/fs/bpf/proc_image_map/lock_ctrl_map";
 const char *sched_ctrl_path = "/sys/fs/bpf/proc_image_map/sched_ctrl_map";
 const char *sc_ctrl_path = "/sys/fs/bpf/proc_image_map/sc_ctrl_map";
 const char *mfutex_ctrl_path = "/sys/fs/bpf/proc_image_map/mfutex_ctrl_map";
+
+
+
+const char* schedule_out_path = "/home/zzk/libbpf-bootstrap/eBPF_proc_image/res_out/schedule_out.txt";
+
 
 struct proc_syscall_info {
     int first_syscall;
@@ -271,3 +278,5 @@ int update_sched_ctrl_map(struct sched_ctrl sched_ctrl){
 
     return 0;
 }
+
+#endif /* _HELPERS_H */

@@ -130,9 +130,48 @@ static struct ksyms *ksyms = NULL;
 static struct syms_cache *sched_syms_cache = NULL;
 static struct ksyms *sched_ksyms = NULL;
 
+int schedule_fd;
 
-char *task_state[] = {"TASK_RUNNING", "TASK_INTERRUPTIBLE", "TASK_UNINTERRUPTIBLE", 
-                      "", "__TASK_STOPPED", "", "", "", "__TASK_TRACED"};
+// char *task_state[] = {"TASK_RUNNING", "TASK_INTERRUPTIBLE", "TASK_UNINTERRUPTIBLE", 
+//                       "", "__TASK_STOPPED", "", "", "", "__TASK_TRACED"};
+#define GET_STATE_STR(state) 	strcpy(str, (state)); \
+								break;
+
+const char* get_task_state(int state) {
+	static char str[20];
+	switch (state)
+	{
+	case 0:
+		GET_STATE_STR("TASK_RUNNING")
+	case 1:
+		GET_STATE_STR("TASK_INTERRUPTIBLE")
+	case 2:
+		GET_STATE_STR("TASK_UNINTERRUPTIBLE")
+	case 4:
+		GET_STATE_STR("__TASK_STOPPED")
+	case 8:
+		GET_STATE_STR("__TASK_TRACED")
+	case 0x80:
+		GET_STATE_STR("TASK_DEAD")
+	case 0x200:
+		GET_STATE_STR("TASK_WAKING")
+	case 0x800:
+		GET_STATE_STR("TASK_NEW")
+	case 0x100:
+		GET_STATE_STR("TASK_WAKEKILL")
+	case 0x102:
+		GET_STATE_STR("TASK_KILLABLE")
+	case 0x402:
+		GET_STATE_STR("TASK_IDLE")
+	case 0x3:
+		GET_STATE_STR("TASK_NORMAL")
+	default:
+		GET_STATE_STR("unknow_state")
+		break;
+	}
+	printf("get state str: %s\n", str);
+	return str;
+}
 char *timestamp_state[] = {"OFFCPU", "ONCPU", "WAKEUP", "WAKEUPNEW", "SWITCH", "SYSCALL"};
 
 //u32 syscalls[NR_syscalls] = {};
@@ -286,299 +325,122 @@ delete_elem:
 	return 0;
 }
 
-// static void print_offcpu_map()
-// {
-// 	struct offcpu_key_t lookup_key = {}, next_key;
-// 	const struct ksym *ksym;
-// 	const struct syms *syms;
-// 	const struct sym *sym;
-// 	int err, i, ifd, sfd;
-// 	unsigned long *ip;
-// 	struct offcpu_val_t val;
-// 	struct sym_info sinfo;
-// 	int idx;
+static void print_all_stack(int out_fd, int stack_fd, int kern_stack_id, int user_stack_id, int tgid, struct ksyms *ksyms, struct syms_cache *syms_cache)
+{
+	ssize_t written_bytes = 0;
+	char str[256];
+	unsigned long *ip = calloc(127, sizeof(*ip));
+	if (!ip) {
+		fprintf(stderr, "failed to alloc ip\n");
+		return;
+	}
 
-// 	ip = calloc(127, sizeof(*ip));
-// 	if (!ip) {
-// 		printf("7\n");
+	int idx = 0;
 
-// 		fprintf(stderr, "failed to alloc ip\n");
-// 		return;
-// 	}
-// 		printf("8\n");
-// 	ifd = bpf_map__fd(schedule_skel->maps.offcpu_info);
-// 	sfd = bpf_map__fd(schedule_skel->maps.stackmap);
-// 	while (!bpf_map_get_next_key(ifd, &lookup_key, &next_key)) {
-// 		printf("4\n");
+	if (bpf_map_lookup_elem(stack_fd, &kern_stack_id, ip) != 0) {
+		goto print_ustack;
+	}
 
-// 		idx = 0;
+	const struct ksym *ksym;
+	const struct syms *syms;
+	const struct sym *sym;
 
-// 		err = bpf_map_lookup_elem(ifd, &next_key, &val);
-// 		if (err < 0) {
-// 			fprintf(stderr, "failed to lookup info: %d\n", err);
-// 			goto cleanup;
-// 		}
-// 		lookup_key = next_key;
-// 		if (val.delta == 0)
-// 			continue;
-// 		if (bpf_map_lookup_elem(sfd, &next_key.kern_stack_id, ip) != 0) {
-// 			fprintf(stderr, "    [Missed Kernel Stack]\n");
-// 			goto print_ustack;
-// 		}
+	for (int i = 0; i < 127 && ip[i]; i++) {
+		ksym = ksyms__map_addr(ksyms, ip[i]);
+		written_bytes = sprintf(str, "    #%-2d  %s\n",idx++, ksym ? ksym->name : "unknown"); 
+		if(write(out_fd, str, written_bytes) != written_bytes) {
+			fprintf(stderr, "Failed to write event str\n");
+			continue;
+		}
+	}
+print_ustack:
+		if (user_stack_id == -1)
+			goto cleanup;
 
-// 		for (i = 0; i < 127 && ip[i]; i++) {
-// 			printf("index: %d\n", i);
-// 			ksym = ksyms__map_addr(sched_ksyms, ip[i]);
-// 			// if (!env.verbose) {
-// 			// 	printf("    %s\n", ksym ? ksym->name : "unknown");
-// 			// } 
-// 			// else {
-// 				if (ksym)
-// 					printf("    #%-2d 0x%lx %s+0x%lx\n", idx++, ip[i], ksym->name, ip[i] - ksym->addr);
-// 				else
-// 					printf("    #%-2d 0x%lx [unknown]\n", idx++, ip[i]);
-// 			// }
-// 		}
+		if (bpf_map_lookup_elem(stack_fd, &user_stack_id, ip) != 0) {
+			goto cleanup;
+		}
+		struct sym_info sinfo;
+		int err = 0;
+		syms = syms_cache__get_syms(syms_cache, tgid);
+		if (!syms) {
+			goto cleanup;
+		}
+		for (int i = 0; i < 127 && ip[i]; i++) {
+			err = syms__map_addr_dso(syms, ip[i], &sinfo);
+			if (err == 0) {
+				if (sinfo.sym_name) {
+					written_bytes = sprintf(str, "    #%-2d %s",idx++, sinfo.sym_name); 
+					if(write(out_fd, str, written_bytes) != written_bytes) {
+						fprintf(stderr, "Failed to write event str\n");
+						continue;
+					}
+				}
+				written_bytes = sprintf(str, " (%s)", sinfo.dso_name); 
+				if(write(out_fd, str, written_bytes) != written_bytes) {
+					fprintf(stderr, "Failed to write event str\n");
+					continue;
+				}
+			}
+			write(out_fd, "\n", 1);
+		}
+cleanup:
+	free(ip);
+	return;
+}
 
-// print_ustack:
-// 		printf("5\n");
+int print_offcpu_event(int out_fd, struct offcpu_val_t *offcpu_val, struct ksyms *ksyms, struct syms_cache *syms_cache)
+{
+	int stack_fd = bpf_map__fd(schedule_skel->maps.stackmap);
+	print_all_stack(out_fd, stack_fd, offcpu_val->kern_stack_id, offcpu_val->user_stack_id, offcpu_val->tgid, ksyms, syms_cache);
+	char str[256];
 
-// 		if (next_key.user_stack_id == -1)
-// 			goto skip_ustack;
-
-// 		if (bpf_map_lookup_elem(sfd, &next_key.user_stack_id, ip) != 0) {
-// 			fprintf(stderr, "    [Missed User Stack]\n");
-// 			goto skip_ustack;
-// 		}
-
-// 		syms = syms_cache__get_syms(sched_syms_cache, next_key.tgid);
-// 		if (!syms) {
-// 			// if (!env.verbose) {
-// 			// 	fprintf(stderr, "failed to get syms\n");
-// 			// } 
-// 			// else {
-// 				for (i = 0; i < 127 && ip[i]; i++)
-// 					printf("    #%-2d 0x%016lx [unknown]\n", idx++, ip[i]);
-// 			// }
-// 			goto skip_ustack;
-// 		}
-// 		for (i = 0; i < 127 && ip[i]; i++) {
-// 			// if (!env.verbose) {
-// 			// 	sym = syms__map_addr(syms, ip[i]);
-// 			// 	if (sym)
-// 			// 		printf("    %s\n", sym->name);
-// 			// 	else
-// 			// 		printf("    [unknown]\n");
-// 			// } 
-// 			// else {
-// 				printf("    #%-2d 0x%016lx", idx++, ip[i]);
-// 				err = syms__map_addr_dso(syms, ip[i], &sinfo);
-// 				if (err == 0) {
-// 					if (sinfo.sym_name)
-// 						printf(" %s+0x%lx", sinfo.sym_name, sinfo.sym_offset);
-// 					printf(" (%s+0x%lx)", sinfo.dso_name, sinfo.dso_offset);
-// 				}
-// 				printf("\n");
-// 			// }
-// 		}
-
-// skip_ustack:
-// 		printf("    %-16s cpu id: %d    %s (%d)\n", "-", val.cpu, val.comm, next_key.pid);
-// 		printf("        %lld\n\n", val.delta);
-// 		printf("        %s\n\n", task_state[val.state]);
-// 	}
-
-// cleanup:
-// 	free(ip);
-// }
-// static void print_wakeup_map()
-// {
-// 	struct wakeup_key_t lookup_key = {}, next_key;
-// 	int err, i, wakeupfd, stack_traces_fd;
-// 	unsigned long *ip;
-// 	const struct ksym *ksym;
-// 	__u64 val;
-
-// 	ip = calloc(127, sizeof(*ip));
-// 	if (!ip) {
-// 		fprintf(stderr, "failed to alloc ip\n");
-// 		return;
-// 	}
-
-// 	wakeupfd = bpf_map__fd(schedule_skel->maps.wakeup_duration);
-// 	stack_traces_fd = bpf_map__fd(schedule_skel->maps.stackmap);
-
-// 	while (!bpf_map_get_next_key(wakeupfd, &lookup_key, &next_key)){
-// 		err = bpf_map_lookup_elem(wakeupfd, &next_key, &val);
-// 		if (err < 0) {
-// 			fprintf(stderr, "failed to lookup info: %d\n", err);
-// 			free(ip);
-// 			return;
-// 		}
-// 		printf("\n	%-16s %s\n", "target:", next_key.target_proc_comm);
-// 		lookup_key = next_key;
-
-// 		err = bpf_map_lookup_elem(stack_traces_fd, &next_key.wakeup_kern_stack_id, ip);
-// 		if (err < 0) {
-// 			fprintf(stderr, "missed kernel stack: %d\n", err);
-// 		}
-// 		for (i = 0; i < 127 && ip[i]; i++) {
-// 			ksym = ksyms__map_addr(ksyms, ip[i]);
-// 			if (ksym)
-// 				printf("	%-16lx %s+0x%lx\n", ip[i], ksym->name, ip[i] - ksym->addr);
-// 			else
-// 				printf("	%-16lx Unknown\n", ip[i]);
-// 		}
-// 		printf("	%16s %s\n","waker:", next_key.waker_proc_comm);
-// 		/*to convert val in microseconds*/
-// 		val /= 1000;
-// 		printf("	%lld\n", val);
-// 	}
-
-// 	free(ip);
-// }
+	ssize_t written_bytes = sprintf(str, "CPU: %-2d  state: %s  switch to [%s]  next pid: %d\n", offcpu_val->cpu, get_task_state(offcpu_val->state), offcpu_val->next_comm, offcpu_val->next_pid); 
+	if(write(out_fd, str, written_bytes) != written_bytes) {
+		fprintf(stderr, "Failed to write event str\n");
+	}
+    return 0;
+}
+int print_wakeup_event(int out_fd, struct wakeup_value_t *wakeup_val, struct ksyms *ksyms, struct syms_cache *syms_cache)
+{
+	int stack_fd = bpf_map__fd(schedule_skel->maps.stackmap);
+	print_all_stack(out_fd, stack_fd, wakeup_val->wakeup_kern_stack_id, wakeup_val->wakeup_user_stack_id, wakeup_val->tgid, ksyms, syms_cache);
+	char str[256];
+	ssize_t written_bytes = sprintf(str, "CPU: %-2d  [%s] pid: %d  wake up target proc\n", wakeup_val->cpu, wakeup_val->waker_proc_comm, wakeup_val->waker_pid); 
+	if(write(out_fd, str, written_bytes) != written_bytes) {
+		fprintf(stderr, "Failed to write event str\n");
+	}
+    return 0;
+}
 static int print_schedule(void *ctx, void *data,unsigned long data_sz)
 {
 	switch(data_sz)
 	{
 		case sizeof(struct offcpu_val_t):
 			struct offcpu_val_t *offcpu_val = (struct offcpu_val_t*)data;
-			printf("data size: %ld   kern id: %d   user id: %d\n", data_sz, offcpu_val->kern_stack_id, offcpu_val->user_stack_id);
+			if(print_offcpu_event(schedule_fd, offcpu_val, sched_ksyms, sched_syms_cache)) {
+				fprintf(stderr, "print offcpu event error\n");
+			}
 			break;
 		case sizeof(struct wakeup_value_t):
 			struct wakeup_value_t *wakeup_val = (struct wakeup_value_t*)data;
-			printf("data size: %ld   kern id: %d   user id: %d\n", data_sz, wakeup_val->wakeup_kern_stack_id, wakeup_val->wakeup_user_stack_id);
+			if(print_wakeup_event(schedule_fd, wakeup_val, sched_ksyms, sched_syms_cache)) {
+				fprintf(stderr, "print wakeup event error\n");
+			}
 			break;		
 		case sizeof(struct timestamp_t):
 			struct timestamp_t *timestamp_val = (struct timestamp_t*)data;
-			printf("data size: %ld   [%s] timestamp: %lld\n", data_sz, timestamp_state[timestamp_val->ts_type], timestamp_val->timestamp);
+			char timestamp_str[256];
+			int timestamp_bytes = sprintf(timestamp_str, "timestamp: %lld  [%s]  data size: %ld\n", timestamp_state[timestamp_val->ts_type], timestamp_val->timestamp, data_sz);
+			if(write(schedule_fd, timestamp_str, timestamp_bytes) != timestamp_bytes) {
+				fprintf(stderr, "Failed to write timestamp str\n");
+			}
 			break;
 	}
 	
 	return 0;
 }
-// static int print_schedule(struct bpf_map *proc_map,struct bpf_map *target_map,struct bpf_map *sys_map,int schedmap_fd)
-// {
-// 	int err,key = 0;
-// 	struct sched_ctrl sched_ctrl ={};
 
-// 	err = bpf_map_lookup_elem(schedmap_fd,&key,&sched_ctrl);
-// 	if (err < 0) {
-// 		fprintf(stderr, "failed to lookup infos: %d\n", err);
-// 		return -1;
-// 	}
-// 	if(!sched_ctrl.sched_func)	return 0;
-	
-// 	struct proc_id lookup_key = {-1}, next_key;
-// 	int l_key = -1, n_key;
-// 	int proc_fd = bpf_map__fd(proc_map);
-// 	int target_fd = bpf_map__fd(target_map);
-// 	// int tg_fd = bpf_map__fd(tg_map);
-// 	int sys_fd = bpf_map__fd(sys_map);
-// 	struct schedule_event proc_event;
-// 	struct sum_schedule sys_event;
-// 	time_t now = time(NULL);
-// 	struct tm *localTime = localtime(&now);
-//     int hour = localTime->tm_hour;
-//     int min = localTime->tm_min;
-//     int sec = localTime->tm_sec;
-// 	u64 proc_avg_delay;
-// 	u64 target_avg_delay;
-// 	u64 sys_avg_delay;
-// 	int sched_cur_tgid = 0;
-
-// 	// if(sched_ctrl.target_tgid != -1)	sched_cur_tgid = 2;
-// 	// else	sched_cur_tgid = 1;
-	
-// 	if(prev_image != SCHEDULE_IMAGE){
-// 		printf("SCHEDULE ----------------------------------------------------------------------------------------------------------------------\n");
-// 		printf("%-8s  ","TIME");
-// 		// if(sched_ctrl.target_tgid != -1){
-// 		// 	printf("%-6s  ","TGID");
-// 		// 	env.sched_prev_tgid = 2;
-// 		// }else{
-// 		// 	env.sched_prev_tgid = 1;
-// 		// }
-// 		printf("%-6s  %-4s  %s\n","PID","PRIO","| P_AVG_DELAY(ms) S_AVG_DELAY(ms) | P_MAX_DELAY(ms) S_MAX_DELAY(ms) | P_MIN_DELAY(ms) S_MIN_DELAY(ms) |");
-// 		prev_image = SCHEDULE_IMAGE;
-// 	}
-
-// 	if(sched_ctrl.target_pid==-1){
-// 		while (!bpf_map_get_next_key(proc_fd, &lookup_key, &next_key)) {
-// 			err = bpf_map_lookup_elem(proc_fd, &next_key, &proc_event);
-// 			if (err < 0) {
-// 				fprintf(stderr, "failed to lookup infos: %d\n", err);
-// 				return -1;
-// 			}
-// 			proc_avg_delay = proc_event.sum_delay/proc_event.count;
-
-// 			err = bpf_map_lookup_elem(sys_fd, &key, &sys_event);
-// 			if (err < 0) {
-// 				fprintf(stderr, "failed to lookup infos: %d\n", err);
-// 				return -1;
-// 			}
-// 			sys_avg_delay = sys_event.sum_delay/sys_event.sum_count;
-
-// 			printf("%02d:%02d:%02d  %-6d  %-4d  | %-15lf %-15lf | %-15lf %-15lf | %-15lf %-15lf |\n",
-// 					hour,min,sec,proc_event.pid,proc_event.prio,proc_avg_delay/1000000.0,sys_avg_delay/1000000.0,
-// 					proc_event.max_delay/1000000.0,sys_event.max_delay/1000000.0,proc_event.min_delay/1000000.0,sys_event.min_delay/1000000.0);
-			
-// 			lookup_key = next_key;
-// 		}
-// 	}
-// 	// else if(sched_ctrl.target_pid!=-1){
-// 	// 	err = bpf_map_lookup_elem(target_fd, &key, &proc_event);
-// 	// 	if (err < 0) {
-// 	// 		fprintf(stderr, "failed to lookup infos: %d\n", err);
-// 	// 		return -1;
-// 	// 	}
-
-// 	// 	if(proc_event.count != 0){	
-// 	// 		target_avg_delay = proc_event.sum_delay/proc_event.count;
-			
-// 	// 		err = bpf_map_lookup_elem(sys_fd, &key, &sys_event);
-// 	// 		if (err < 0) {
-// 	// 			fprintf(stderr, "failed to lookup infos: %d\n", err);
-// 	// 			return -1;
-// 	// 		}
-// 	// 		sys_avg_delay = sys_event.sum_delay/(sys_event.sum_count==0?1:sys_event.sum_count);
-
-// 	// 		printf("%02d:%02d:%02d  %-6d  %-4d  | %-15lf %-15lf | %-15lf %-15lf | %-15lf %-15lf |\n",
-// 	// 				hour,min,sec,proc_event.pid,proc_event.prio,target_avg_delay/1000000.0,sys_avg_delay/1000000.0,
-// 	// 				proc_event.max_delay/1000000.0,sys_event.max_delay/1000000.0,proc_event.min_delay/1000000.0,sys_event.min_delay/1000000.0);
-// 	// 	}
-// 	// }
-
-
-	
-// 	// else if(sched_ctrl.target_pid==-1 && sched_ctrl.target_tgid!=-1){
-// 	// 	while (!bpf_map_get_next_key(tg_fd, &l_key, &n_key)) {
-// 	// 		err = bpf_map_lookup_elem(tg_fd, &n_key, &proc_event);
-// 	// 		if (err < 0) {
-// 	// 			fprintf(stderr, "failed to lookup infos: %d\n", err);
-// 	// 			return -1;
-// 	// 		}
-// 	// 		proc_avg_delay = proc_event.sum_delay/proc_event.count;
-
-// 	// 		err = bpf_map_lookup_elem(sys_fd, &key, &sys_event);
-// 	// 		if (err < 0) {
-// 	// 			fprintf(stderr, "failed to lookup infos: %d\n", err);
-// 	// 			return -1;
-// 	// 		}
-// 	// 		sys_avg_delay = sys_event.sum_delay/sys_event.sum_count;
-
-// 	// 		printf("%02d:%02d:%02d  %-6d  %-6d  %-4d  | %-15lf %-15lf | %-15lf %-15lf | %-15lf %-15lf |\n",
-// 	// 				hour,min,sec,proc_event.tgid,proc_event.pid,proc_event.prio,proc_avg_delay/1000000.0,sys_avg_delay/1000000.0,
-// 	// 				proc_event.max_delay/1000000.0,sys_event.max_delay/1000000.0,proc_event.min_delay/1000000.0,sys_event.min_delay/1000000.0);
-			
-// 	// 		l_key = n_key;
-// 	// 	}
-// 	// }
-
-// 	env.output_schedule = false;
-
-// 	return 0;
-// }
 static long softirq_count = 0;
 static int print_syscall(void *ctx, void *data,unsigned long data_sz)
 {
@@ -1300,6 +1162,12 @@ int main(int argc, char **argv)
 			fprintf(stderr, "Failed to create schedule ring buffer\n");
 			goto cleanup;
 		}
+		schedule_fd = open(schedule_out_path, O_RDWR | O_CREAT | O_TRUNC, 0666);
+		if(schedule_fd < 0) {
+			err = -1;
+			fprintf(stderr, "Failed to create schedule out file\n");
+			goto cleanup;
+		}
 	}
 	printf("1\n");
 	/* 处理事件 */
@@ -1452,6 +1320,7 @@ cleanup:
 		schedule_image_bpf__destroy(schedule_skel);
 		syms_cache__free(sched_syms_cache);
 		ksyms__free(sched_ksyms);
+		close(schedule_fd);
 	}
 
 	return err < 0 ? -err : 0;

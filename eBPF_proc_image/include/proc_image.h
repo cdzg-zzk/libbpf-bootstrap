@@ -253,13 +253,14 @@ struct sum_schedule{
 // size 40
 struct offcpu_val_t {
 	// __u32 pid;
-	// __u32 tgid;
+	__u32 tgid;
 	int user_stack_id;
 	int kern_stack_id;
 	// __u64 delta;
 	// __u64 offcpu_start;
 	int state;
 	int cpu;
+	int next_pid;
 	char next_comm[TASK_COMM_LEN];
 };
 
@@ -272,10 +273,12 @@ struct offcpu_val_t {
 
 // size 28
 struct wakeup_value_t {
-	char waker_proc_comm[TASK_COMM_LEN];
+	int waker_pid;
 	int wakeup_kern_stack_id;
 	int wakeup_user_stack_id;
 	int cpu;
+	int tgid;
+	char waker_proc_comm[TASK_COMM_LEN];
 	// int delta;
 };
 

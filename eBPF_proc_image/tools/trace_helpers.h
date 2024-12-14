@@ -27,6 +27,13 @@ struct sym {
 	unsigned long offset;
 };
 
+struct sym_info {
+	const char *dso_name;
+	unsigned long dso_offset;
+	const char *sym_name;
+	unsigned long sym_offset;
+};
+
 struct syms;
 
 struct syms *syms__load_pid(int tgid);

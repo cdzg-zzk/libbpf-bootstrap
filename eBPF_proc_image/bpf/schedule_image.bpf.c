@@ -432,9 +432,11 @@ static int handle_sched_switch(void *ctx, bool preempt, struct task_struct *prev
 		val->kern_stack_id = bpf_get_stackid(ctx, &stackmap, 0);
 		// bpf_map_update_elem(&offcpu_start, &pid, &key, BPF_ANY);
 		bpf_probe_read_kernel_str(&val->next_comm, sizeof(next->comm), BPF_CORE_READ(next, comm));
+		val->next_pid = BPF_CORE_READ(next, pid);
 		// val->delta = 0;
 		val->state = BPF_CORE_READ(prev, __state);
 		val->cpu = cpu;
+		val->tgid = BPF_CORE_READ(prev, tgid);
 		// bpf_map_update_elem(&offcpu_value, &pid, &val, BPF_ANY);
 		bpf_ringbuf_submit(val, 0);
 	}
@@ -546,6 +548,7 @@ static int wakeup(void *ctx, struct task_struct *p, int target_pid, enum timesta
 		return 0;
 	}
 	// val->delta = (u64)delta;
+	val->tgid = BPF_CORE_READ(p, tgid);
 	val->cpu = cpu;
 	val->wakeup_kern_stack_id = bpf_get_stackid(ctx, &stackmap, 0);
 	if (BPF_CORE_READ(p, flags) & PF_KTHREAD)
@@ -553,7 +556,7 @@ static int wakeup(void *ctx, struct task_struct *p, int target_pid, enum timesta
 	else
 		val->wakeup_user_stack_id = bpf_get_stackid(ctx, &stackmap, BPF_F_USER_STACK);
 	bpf_get_current_comm(&val->waker_proc_comm, sizeof(val->waker_proc_comm));
-
+	val->waker_pid = bpf_get_current_pid_tgid() >> 32;
 	// bpf_probe_read_kernel_str(&val.target_proc_comm, sizeof(p->comm), BPF_CORE_READ(p, comm));
 	bpf_ringbuf_submit(val, 0);
 	// bpf_map_update_elem(&wakeup_value, &pid, &val, BPF_ANY);
