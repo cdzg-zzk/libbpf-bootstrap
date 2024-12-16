@@ -41,7 +41,7 @@ INCLUDES := -I$(OUTPUT) -I../libbpf/include/uapi -I$(LIBBLAZESYM_INC) -I./includ
 CFLAGS := -g -Wall
 ALL_LDFLAGS := $(LDFLAGS) $(EXTRA_LDFLAGS)
 
-APPS = syscall_image schedule_image
+APPS = interrupt_trace schedule_image
 WORKTOOL := proc_image
 CONTROLLER := controller
 

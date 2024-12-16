@@ -12,7 +12,7 @@
 #include <bpf/bpf.h>
 #include "proc_image.h"
 
-#include "syscall_image.skel.h"
+#include "interrupt_trace.skel.h"
 #include "schedule_image.skel.h"
 
 #include "hashmap.h"
@@ -34,7 +34,7 @@ static struct env {
 };
 
 
-struct syscall_image_bpf *syscall_skel = NULL;
+struct interrupt_trace_bpf *interrupt_skel = NULL;
 struct schedule_image_bpf *schedule_skel = NULL;
 
 int schedule_fd;
@@ -339,19 +339,19 @@ int main(int argc, char **argv)
 
 
 	if(env.enable_syscall){
-		syscall_skel = syscall_image_bpf__open();
-		if(!syscall_skel) {
+		interrupt_skel = interrupt_trace_bpf__open();
+		if(!interrupt_skel) {
 			fprintf(stderr, "Failed to open BPF syscall skeleton\n");
 			return 1;
 		}
 		
-		err = syscall_image_bpf__load(syscall_skel);
+		err = interrupt_trace_bpf__load(interrupt_skel);
 		if (err) {
 			fprintf(stderr, "Failed to load and verify BPF syscall skeleton\n");
 			goto cleanup;
 		}
 
-		err = common_pin_map(&sc_ctrl_map,syscall_skel->obj,"sc_ctrl_map",sc_ctrl_path);
+		err = common_pin_map(&sc_ctrl_map,interrupt_skel->obj,"sc_ctrl_map",sc_ctrl_path);
 		if(err < 0){
 			goto cleanup;
 		}
@@ -363,7 +363,7 @@ int main(int argc, char **argv)
 			goto cleanup;
 		}
 
-		err = syscall_image_bpf__attach(syscall_skel);
+		err = interrupt_trace_bpf__attach(interrupt_skel);
 		if (err) {
 			fprintf(stderr, "Failed to attach BPF syscall skeleton\n");
 			goto cleanup;
@@ -371,7 +371,7 @@ int main(int argc, char **argv)
 
 		/* 设置环形缓冲区轮询 */
 		//ring_buffer__new() API，允许在不使用额外选项数据结构下指定回调
-		syscall_rb = ring_buffer__new(bpf_map__fd(syscall_skel->maps.syscall_rb), print_syscall, NULL, NULL);
+		syscall_rb = ring_buffer__new(bpf_map__fd(interrupt_skel->maps.syscall_rb), print_syscall, NULL, NULL);
 		if (!syscall_rb) {
 			err = -1;
 			fprintf(stderr, "Failed to create syscall ring buffer\n");
@@ -483,7 +483,7 @@ cleanup:
 	if(env.enable_syscall){
 		bpf_map__unpin(sc_ctrl_map, sc_ctrl_path);
 		ring_buffer__free(syscall_rb);
-		syscall_image_bpf__destroy(syscall_skel);
+		interrupt_trace_bpf__destroy(interrupt_skel);
 		close(syscall_fd);
 	}
 

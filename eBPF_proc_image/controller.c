@@ -41,7 +41,7 @@ static const struct argp_option opts[] = {
 	{ "pid", 'p', "PID", 0, "Process ID to trace" },
     { "time", 't', "TIME-SEC", 0, "Max Running Time(0 for infinite)" },
     { "myproc", 'm', NULL, 0, "Trace the process of the tool itself (not tracked by default)" },
-    { "syscall", 's', "NULL", 0, "Collects syscall sequence (1~50) information about processes(any 1~50 when deactivated)" },
+    { "syscall", 's', NULL, 0, "Collects syscall sequence (1~50) information about processes(any 1~50 when deactivated)" },
     { "schedule", 'S', NULL, 0, "Collects schedule information about processes (trace tool process)" },
     { NULL, 'h', NULL, OPTION_HIDDEN, "show the help" },
     {},
