@@ -24,11 +24,11 @@ static volatile bool exiting = false;
 
 static struct env {
 	int self_tgid;
-	bool enable_syscall;
+	bool enable_interrupt;
 	bool enable_schedule;
 	int sc_prev_tgid;
 } env = {
-	.enable_syscall = false,
+	.enable_interrupt = false,
 	.enable_schedule = false,
 	.sc_prev_tgid = 0,
 };
@@ -38,9 +38,9 @@ struct interrupt_trace_bpf *interrupt_skel = NULL;
 struct schedule_trace_bpf *schedule_skel = NULL;
 
 int schedule_fd;
-int syscall_fd;
+int interrupt_fd;
 
-static int scmap_fd;
+static int intmap_fd;
 static int schedmap_fd;
 
 
@@ -94,9 +94,9 @@ char *timestamp_state[] = {"OFFCPU", "ONCPU", "WAKEUP", "WAKEUPNEW", "SWITCH", "
 const char argp_program_doc[] ="Trace the lifecycle of  target process to get process key information.\n";
 
 static const struct argp_option opts[] = {
-	{ "all", 'a', NULL, 0, "Attach all eBPF functions(but do not start)" },
-	{ "syscall", 's', NULL, 0, "Attach eBPF functions about syscall sequence(but do not start)" },
-	{ "schedule", 'S', NULL, 0, "Attach eBPF functions about schedule (but do not start)" },
+	{ "all", 'a', NULL, 0, "Enable all function" },
+	{ "interrupt", 'i', NULL, 0, "Enable interrupt function" },
+	{ "schedule", 's', NULL, 0, "Enable schedule function" },
     { NULL, 'h', NULL, OPTION_HIDDEN, "show the help" },
 	{},
 };
@@ -105,13 +105,13 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
 	switch (key) {
 		case 'a':
-				env.enable_syscall = true;
+				env.enable_interrupt = true;
 				env.enable_schedule = true;
 				break;
-		case 's':
-				env.enable_syscall = true;
+		case 'i':
+				env.enable_interrupt = true;
                 break;
-		case 'S':
+		case 's':
 				env.enable_schedule = true;
 				break;
 		case 'h':
@@ -244,7 +244,7 @@ static int print_schedule(void *ctx, void *data,unsigned long data_sz)
 #define GET_SYSCALL_NAME (syscall_val->syscall_id<syscall_names_size?syscall_names[syscall_val->syscall_id]:"[Unknow syscall]")
 #define GET_SOFTIRQ_NAME (soft_val->vec_nr<NR_SOFTIRQS?vec_names[soft_val->vec_nr]:"[Unknow softirq]")
 #define GET_SIGNAL_NAME(sig) (((sig) < ARRAY_SIZE(sig_name)) ? sig_name[(sig)] : "[Extened signal]")
-static int print_syscall(void *ctx, void *data,unsigned long data_sz)
+static int print_interrupt(void *ctx, void *data,unsigned long data_sz)
 {
 	int written_bytes = 0;
 	switch(data_sz)
@@ -253,7 +253,7 @@ static int print_syscall(void *ctx, void *data,unsigned long data_sz)
 			struct syscall_val_t* syscall_val = (struct syscall_val_t*)data;
 			char syscall_str[256];
 			written_bytes = sprintf(syscall_str, "data size: %ld  timestamp: %llu  [syscall]: %s   duration: %llu  ret: %d\n", data_sz, syscall_val->timestamp, GET_SYSCALL_NAME, syscall_val->duration, syscall_val->ret);
-			if(write(syscall_fd, syscall_str, written_bytes) != written_bytes) {
+			if(write(interrupt_fd, syscall_str, written_bytes) != written_bytes) {
 				fprintf(stderr, "Failed to write syscall str\n");
 			}
 			break;
@@ -261,7 +261,7 @@ static int print_syscall(void *ctx, void *data,unsigned long data_sz)
 			struct softirq_val_t* soft_val = (struct softirq_val_t*)data;
 			char softirq_str[256];
 			written_bytes = sprintf(softirq_str, "data size: %ld  timestamp: %llu  [softirq]: %s   duration: %llu\n", data_sz, soft_val->timestamp, GET_SOFTIRQ_NAME, soft_val->duration);
-			if(write(syscall_fd, softirq_str, written_bytes) != written_bytes) {
+			if(write(interrupt_fd, softirq_str, written_bytes) != written_bytes) {
 				fprintf(stderr, "Failed to write softirq str\n");
 			}
 			break;
@@ -269,7 +269,7 @@ static int print_syscall(void *ctx, void *data,unsigned long data_sz)
 			struct hardirq_val_t* hardirq_val = (struct hardirq_val_t*)data;
 			char hardirq_str[256];
 			written_bytes = sprintf(hardirq_str, "data size: %ld  timestamp: %llu  [hardirq]: %s    duration: %llu\n", data_sz, hardirq_val->timestamp, hardirq_val->hardirq_name, hardirq_val->duration);
-			if(write(syscall_fd, hardirq_str, written_bytes) != written_bytes) {
+			if(write(interrupt_fd, hardirq_str, written_bytes) != written_bytes) {
 				fprintf(stderr, "Failed to write hardirq str\n");
 			}
 			break;
@@ -277,7 +277,7 @@ static int print_syscall(void *ctx, void *data,unsigned long data_sz)
 			struct signal_handle_val_t *signal_handle_val = (struct signal_handle_val_t*)data;
 			char signal_handle_str[256];
 			written_bytes = sprintf(signal_handle_str, "data size: %ld  timestamp: %llu  [signal]: %s    duration: %llu\n", data_sz, signal_handle_val->timestamp, GET_SIGNAL_NAME(signal_handle_val->sig), signal_handle_val->duration);
-			if(write(syscall_fd, signal_handle_str, written_bytes) != written_bytes) {
+			if(write(interrupt_fd, signal_handle_str, written_bytes) != written_bytes) {
 				fprintf(stderr, "Failed to write signal handle str\n");
 			}
 			break;
@@ -285,7 +285,7 @@ static int print_syscall(void *ctx, void *data,unsigned long data_sz)
 			struct signal_val_t *signal_val = (struct signal_val_t*)data;
 			char signal_str[256];
 			written_bytes = sprintf(signal_str, "data size: %ld  timestamp: %llu  [signal]: %s\n", data_sz, signal_val->timestamp, GET_SIGNAL_NAME(signal_val->sig));
-			if(write(syscall_fd, signal_str, written_bytes) != written_bytes) {
+			if(write(interrupt_fd, signal_str, written_bytes) != written_bytes) {
 				fprintf(stderr, "Failed to write signal str\n");
 			}
 			break;
@@ -310,8 +310,8 @@ static void sig_handler(int signo)
 
 int main(int argc, char **argv)
 {
-	struct ring_buffer *syscall_rb = NULL;
-	struct bpf_map *sc_ctrl_map = NULL;
+	struct ring_buffer *interrupt_rb = NULL;
+	struct bpf_map *interrupt_ctrl_map = NULL;
 	struct ring_buffer *sched_rb = NULL;
 	struct bpf_map *sched_ctrl_map = NULL;
 
@@ -338,7 +338,7 @@ int main(int argc, char **argv)
 
 
 
-	if(env.enable_syscall){
+	if(env.enable_interrupt){
 		interrupt_skel = interrupt_trace_bpf__open();
 		if(!interrupt_skel) {
 			fprintf(stderr, "Failed to open BPF syscall skeleton\n");
@@ -351,13 +351,13 @@ int main(int argc, char **argv)
 			goto cleanup;
 		}
 
-		err = common_pin_map(&sc_ctrl_map,interrupt_skel->obj,"sc_ctrl_map",sc_ctrl_path);
+		err = common_pin_map(&interrupt_ctrl_map,interrupt_skel->obj,"interrupt_ctrl_map",interrupt_ctrl_path);
 		if(err < 0){
 			goto cleanup;
 		}
-		scmap_fd = bpf_map__fd(sc_ctrl_map);
-		struct sc_ctrl init_value= {false,-1};
-		err = bpf_map_update_elem(scmap_fd, &key, &init_value, 0);
+		intmap_fd = bpf_map__fd(interrupt_ctrl_map);
+		struct interrupt_ctrl init_value= {false,-1};
+		err = bpf_map_update_elem(intmap_fd, &key, &init_value, 0);
 		if(err < 0){
 			fprintf(stderr, "Failed to update elem\n");
 			goto cleanup;
@@ -371,14 +371,14 @@ int main(int argc, char **argv)
 
 		/* 设置环形缓冲区轮询 */
 		//ring_buffer__new() API，允许在不使用额外选项数据结构下指定回调
-		syscall_rb = ring_buffer__new(bpf_map__fd(interrupt_skel->maps.syscall_rb), print_syscall, NULL, NULL);
-		if (!syscall_rb) {
+		interrupt_rb = ring_buffer__new(bpf_map__fd(interrupt_skel->maps.interrupt_rb), print_interrupt, NULL, NULL);
+		if (!interrupt_rb) {
 			err = -1;
 			fprintf(stderr, "Failed to create syscall ring buffer\n");
 			goto cleanup;
 		}
-		syscall_fd = open(syscall_out_path, O_RDWR | O_CREAT | O_TRUNC, 0666);
-		if(syscall_fd < 0) {
+		interrupt_fd = open(interrupt_out_path, O_RDWR | O_CREAT | O_TRUNC, 0666);
+		if(interrupt_fd < 0) {
 			err = -1;
 			fprintf(stderr, "Failed to create syscall out file\n");
 			goto cleanup;
@@ -451,15 +451,15 @@ int main(int argc, char **argv)
 	printf("1\n");
 	/* 处理事件 */
 	while (!exiting) {
-		if(env.enable_syscall){
-			err = ring_buffer__poll(syscall_rb, 0);
+		if(env.enable_interrupt){
+			err = ring_buffer__poll(interrupt_rb, 0);
 			/* Ctrl-C will cause -EINTR */
 			if (err == -EINTR) {
 				err = 0;
 				break;
 			}
 			if (err < 0) {
-				printf("Error polling syscall ring buffer: %d\n", err);
+				printf("Error polling interrupt ring buffer: %d\n", err);
 				break;
 			}
 		}
@@ -480,11 +480,11 @@ int main(int argc, char **argv)
 
 /* 卸载BPF程序 */
 cleanup:
-	if(env.enable_syscall){
-		bpf_map__unpin(sc_ctrl_map, sc_ctrl_path);
-		ring_buffer__free(syscall_rb);
+	if(env.enable_interrupt){
+		bpf_map__unpin(interrupt_ctrl_map, interrupt_ctrl_path);
+		ring_buffer__free(interrupt_rb);
 		interrupt_trace_bpf__destroy(interrupt_skel);
-		close(syscall_fd);
+		close(interrupt_fd);
 	}
 
 	if(env.enable_schedule){

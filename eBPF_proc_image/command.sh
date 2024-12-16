@@ -2,4 +2,4 @@
 
 sudo make clean
 sudo make -j20
-sudo ./lifecycle -s
+sudo ./lifecycle -i

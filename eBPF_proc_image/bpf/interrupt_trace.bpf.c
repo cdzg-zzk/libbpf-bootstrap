@@ -27,8 +27,8 @@ struct {
 	__uint(type, BPF_MAP_TYPE_ARRAY);
 	__uint(max_entries, 1);
 	__type(key, int);
-	__type(value, struct sc_ctrl);
-} sc_ctrl_map SEC(".maps");
+	__type(value, struct interrupt_ctrl);
+} interrupt_ctrl_map SEC(".maps");
 
 struct {
 	__uint(type, BPF_MAP_TYPE_ARRAY);
@@ -40,7 +40,7 @@ struct {
 struct {
 	__uint(type, BPF_MAP_TYPE_RINGBUF);
 	__uint(max_entries,256 * 10240);
-} syscall_rb SEC(".maps");
+} interrupt_rb SEC(".maps");
 
 // struct {
 // 	__uint(type, BPF_MAP_TYPE_HASH);
@@ -59,8 +59,8 @@ __u64 syscall_time[500] = {};
 SEC("tracepoint/raw_syscalls/sys_enter")
 int sys_enter(struct trace_event_raw_sys_enter *args)
 {
-    struct sc_ctrl *syscall_ctrl;
-	syscall_ctrl = bpf_map_lookup_elem(&sc_ctrl_map,&key);
+    struct interrupt_ctrl *syscall_ctrl;
+	syscall_ctrl = bpf_map_lookup_elem(&interrupt_ctrl_map,&key);
     if(!syscall_ctrl || !syscall_ctrl->sc_func)
 		return 0;
 
@@ -94,8 +94,8 @@ int sys_enter(struct trace_event_raw_sys_enter *args)
 SEC("tracepoint/raw_syscalls/sys_exit")
 int sys_exit(struct trace_event_raw_sys_exit *args)
 {
-    struct sc_ctrl *syscall_ctrl;
-	syscall_ctrl = bpf_map_lookup_elem(&sc_ctrl_map,&key);
+    struct interrupt_ctrl *syscall_ctrl;
+	syscall_ctrl = bpf_map_lookup_elem(&interrupt_ctrl_map,&key);
 	if(!syscall_ctrl || !syscall_ctrl->sc_func)
 		return 0;
     unsigned int id = (unsigned int)args->id;
@@ -125,7 +125,7 @@ int sys_exit(struct trace_event_raw_sys_exit *args)
         return 0;
     }
     struct syscall_val_t *val = NULL;
-    val = bpf_ringbuf_reserve(&syscall_rb, sizeof(*val), 0);
+    val = bpf_ringbuf_reserve(&interrupt_rb, sizeof(*val), 0);
     if(!val) {
         return 0;
     }
@@ -168,8 +168,8 @@ __u64 softirq_time[NR_SOFTIRQS] = {};
 SEC("tp_btf/softirq_entry")
 int BPF_PROG(softirq_entry_btf, unsigned int vec_nr)
 {
-    struct sc_ctrl *syscall_ctrl;
-	syscall_ctrl = bpf_map_lookup_elem(&sc_ctrl_map,&key);
+    struct interrupt_ctrl *syscall_ctrl;
+	syscall_ctrl = bpf_map_lookup_elem(&interrupt_ctrl_map,&key);
 	if(!syscall_ctrl || !syscall_ctrl->sc_func)
 		return 0;
 	if (vec_nr >= NR_SOFTIRQS)
@@ -192,8 +192,8 @@ int BPF_PROG(softirq_entry_btf, unsigned int vec_nr)
 SEC("tp_btf/softirq_exit")
 int BPF_PROG(softirq_exit_btf, unsigned int vec_nr)
 {
-    struct sc_ctrl *syscall_ctrl;
-	syscall_ctrl = bpf_map_lookup_elem(&sc_ctrl_map,&key);
+    struct interrupt_ctrl *syscall_ctrl;
+	syscall_ctrl = bpf_map_lookup_elem(&interrupt_ctrl_map,&key);
 	if(!syscall_ctrl || !syscall_ctrl->sc_func)
 		return 0;
 	if (vec_nr >= NR_SOFTIRQS)
@@ -219,7 +219,7 @@ int BPF_PROG(softirq_exit_btf, unsigned int vec_nr)
         return 0;
     }
     struct softirq_val_t *val;
-    val = bpf_ringbuf_reserve(&syscall_rb, sizeof(*val), 0);
+    val = bpf_ringbuf_reserve(&interrupt_rb, sizeof(*val), 0);
     if(!val) {
         return 0;
     }
@@ -273,8 +273,8 @@ __u64 hardirq_time[NR_HARDIRQS] = {};
 SEC("tp_btf/irq_handler_entry")
 int BPF_PROG(irq_handler_entry_btf, int irq, struct irqaction *action)
 {
-    struct sc_ctrl *syscall_ctrl;
-	syscall_ctrl = bpf_map_lookup_elem(&sc_ctrl_map,&key);
+    struct interrupt_ctrl *syscall_ctrl;
+	syscall_ctrl = bpf_map_lookup_elem(&interrupt_ctrl_map,&key);
 	if(!syscall_ctrl || !syscall_ctrl->sc_func) {
 		return 0;
     }
@@ -303,8 +303,8 @@ int BPF_PROG(irq_handler_entry_btf, int irq, struct irqaction *action)
 SEC("tp_btf/irq_handler_exit")
 int BPF_PROG(irq_handler_exit_btf, int irq, struct irqaction *action)
 {
-    struct sc_ctrl *syscall_ctrl;
-	syscall_ctrl = bpf_map_lookup_elem(&sc_ctrl_map, &key);
+    struct interrupt_ctrl *syscall_ctrl;
+	syscall_ctrl = bpf_map_lookup_elem(&interrupt_ctrl_map, &key);
 	if(!syscall_ctrl || !syscall_ctrl->sc_func)
 		return 0;
     unsigned int irq_index = (unsigned int)irq;
@@ -332,7 +332,7 @@ int BPF_PROG(irq_handler_exit_btf, int irq, struct irqaction *action)
         return 0;
     }
     struct hardirq_val_t *val;
-    val = bpf_ringbuf_reserve(&syscall_rb, sizeof(*val), 0);
+    val = bpf_ringbuf_reserve(&interrupt_rb, sizeof(*val), 0);
     if(!val) {
         return 0;
     }
@@ -380,8 +380,8 @@ int handle_sig = 0;
 SEC("kprobe/handle_signal")
 int BPF_KPROBE(trace_handle_signal_entry, struct ksignal *ksig, struct pt_regs *regs)
 {
-    struct sc_ctrl *syscall_ctrl;
-	syscall_ctrl = bpf_map_lookup_elem(&sc_ctrl_map, &key);
+    struct interrupt_ctrl *syscall_ctrl;
+	syscall_ctrl = bpf_map_lookup_elem(&interrupt_ctrl_map, &key);
 	if(!syscall_ctrl || !syscall_ctrl->sc_func)
 		return 0;
     pid_t pid = bpf_get_current_pid_tgid();
@@ -405,8 +405,8 @@ int BPF_KPROBE(trace_handle_signal_entry, struct ksignal *ksig, struct pt_regs *
 SEC("kretprobe/handle_signal")
 int BPF_KRETPROBE(trace_handle_signal_exit)
 {
-    struct sc_ctrl *syscall_ctrl;
-	syscall_ctrl = bpf_map_lookup_elem(&sc_ctrl_map, &key);
+    struct interrupt_ctrl *syscall_ctrl;
+	syscall_ctrl = bpf_map_lookup_elem(&interrupt_ctrl_map, &key);
 	if(!syscall_ctrl || !syscall_ctrl->sc_func)
 		return 0;
     pid_t pid = bpf_get_current_pid_tgid();
@@ -430,7 +430,7 @@ int BPF_KRETPROBE(trace_handle_signal_exit)
     int sig = handle_sig;
     handle_sig = 0;
     struct signal_handle_val_t *val;
-    val = bpf_ringbuf_reserve(&syscall_rb, sizeof(*val), 0);
+    val = bpf_ringbuf_reserve(&interrupt_rb, sizeof(*val), 0);
     if(!val) {
         return 0;
     }
@@ -448,8 +448,8 @@ int BPF_KRETPROBE(trace_handle_signal_exit)
 SEC("tp_btf/signal_deliver")
 int BPF_PROG(signal_deliver_btf, int signr, kernel_siginfo_t* info, struct k_sigaction *ka)
 {
-    struct sc_ctrl *syscall_ctrl;
-	syscall_ctrl = bpf_map_lookup_elem(&sc_ctrl_map, &key);
+    struct interrupt_ctrl *syscall_ctrl;
+	syscall_ctrl = bpf_map_lookup_elem(&interrupt_ctrl_map, &key);
 	if(!syscall_ctrl || !syscall_ctrl->sc_func)
 		return 0;
     pid_t pid = bpf_get_current_pid_tgid();
@@ -459,7 +459,7 @@ int BPF_PROG(signal_deliver_btf, int signr, kernel_siginfo_t* info, struct k_sig
         return 0;
     u64 current_timestamp = bpf_ktime_get_ns();
     struct signal_val_t *val;
-    val = bpf_ringbuf_reserve(&syscall_rb, sizeof(*val), 0);
+    val = bpf_ringbuf_reserve(&interrupt_rb, sizeof(*val), 0);
     if(!val) {
         return 0;
     }
@@ -475,9 +475,9 @@ int BPF_PROG(signal_deliver_btf, int signr, kernel_siginfo_t* info, struct k_sig
 // SEC("tracepoint/sched/sched_process_exit")
 // int sched_process_exit(void *ctx)
 // {
-//     struct sc_ctrl *sc_ctrl;
-// 	sc_ctrl = bpf_map_lookup_elem(&sc_ctrl_map,&key);
-// 	if(!sc_ctrl || !sc_ctrl->sc_func)
+//     struct interrupt_ctrl *interrupt_ctrl;
+// 	interrupt_ctrl = bpf_map_lookup_elem(&interrupt_ctrl_map,&key);
+// 	if(!interrupt_ctrl || !interrupt_ctrl->sc_func)
 // 		return 0;
     
 //     struct task_struct *p = (struct task_struct *)bpf_get_current_task();

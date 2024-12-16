@@ -10,7 +10,7 @@ typedef unsigned int u32;
 
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 
-struct sc_ctrl {
+struct interrupt_ctrl {
     bool sc_func;
     pid_t target_pid;
 };

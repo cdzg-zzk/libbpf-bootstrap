@@ -61,8 +61,8 @@ libbpf: elf: section(4) tracepoint/raw_syscalls/sys_exit, size 1216, link 0, fla
 libbpf: prog 'sched_process_exit': relo #0: <byte_off> [51] struct task_struct.pid (0:85 @ offset 2456)
 libbpf: prog 'sched_process_exit': relo #0: matching candidate #0 <byte_off> [80] struct task_struct.pid (0:85 @ offset 2456)
 libbpf: prog 'sched_process_exit': relo #0: patched insn #9 (ALU/ALU64) imm 2456 -> 2456
-libbpf: unpinned map 'sc_ctrl_map' from '/sys/fs/bpf/proc_image_map/sc_ctrl_map'
-libbpf: pinned map '/sys/fs/bpf/proc_image_map/sc_ctrl_map'
+libbpf: unpinned map 'interrupt_ctrl_map' from '/sys/fs/bpf/proc_image_map/interrupt_ctrl_map'
+libbpf: pinned map '/sys/fs/bpf/proc_image_map/interrupt_ctrl_map'
 
 
 ```

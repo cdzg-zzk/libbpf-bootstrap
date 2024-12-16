@@ -93,8 +93,8 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 int deactivate_mode(){
     int err;
     if(env.enable_interrupt){
-        struct sc_ctrl sc_ctrl = {false,-1};
-        err = update_sc_ctrl_map(sc_ctrl);
+        struct interrupt_ctrl interrupt_ctrl = {false,-1};
+        err = update_interrupt_ctrl_map(interrupt_ctrl);
         if(err < 0) return err;
     }
 
@@ -132,8 +132,8 @@ int main(int argc, char **argv)
     if(env.usemode == 1){                   // activate mode
         if(env.enable_interrupt){
             printf("syscall\n");
-            struct sc_ctrl sc_ctrl = {true,env.pid};
-            err = update_sc_ctrl_map(sc_ctrl);
+            struct interrupt_ctrl interrupt_ctrl = {true,env.pid};
+            err = update_interrupt_ctrl_map(interrupt_ctrl);
             if(err < 0) return err;
         }
 

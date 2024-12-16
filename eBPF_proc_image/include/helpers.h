@@ -2,12 +2,12 @@
 #define _HELPERS_H
 
 const char *sched_ctrl_path = "/sys/fs/bpf/proc_image_map/sched_ctrl_map";
-const char *sc_ctrl_path = "/sys/fs/bpf/proc_image_map/sc_ctrl_map";
+const char *interrupt_ctrl_path = "/sys/fs/bpf/proc_image_map/interrupt_ctrl_map";
 
 
 
 const char* schedule_out_path = "/home/zzk/libbpf-bootstrap/eBPF_proc_image/res_out/schedule_out.txt";
-const char* syscall_out_path = "/home/zzk/libbpf-bootstrap/eBPF_proc_image/res_out/syscall_out.txt";
+const char* interrupt_out_path = "/home/zzk/libbpf-bootstrap/eBPF_proc_image/res_out/interrupt.txt";
 
 
 
@@ -42,18 +42,18 @@ int common_pin_map(struct bpf_map **bpf_map, const struct bpf_object *obj, const
 }
 
 
-int update_sc_ctrl_map(struct sc_ctrl sc_ctrl){
+int update_interrupt_ctrl_map(struct interrupt_ctrl interrupt_ctrl){
 	int err,key = 0;
-	int scmap_fd;
+	int intmap_fd;
 	
-	scmap_fd = bpf_obj_get(sc_ctrl_path);
-    if (scmap_fd < 0) {
-        fprintf(stderr,"Failed to open sc_ctrl_map file\n");
-        return scmap_fd;
+	intmap_fd = bpf_obj_get(interrupt_ctrl_path);
+    if (intmap_fd < 0) {
+        fprintf(stderr,"Failed to open interrupt_ctrl_map file\n");
+        return intmap_fd;
     }
-    err = bpf_map_update_elem(scmap_fd,&key,&sc_ctrl, 0);
+    err = bpf_map_update_elem(intmap_fd,&key,&interrupt_ctrl, 0);
     if(err < 0){
-        fprintf(stderr, "Failed to update sc_ctrl_map elem\n");
+        fprintf(stderr, "Failed to update interrupt_ctrl_map elem\n");
         return err;
     }
 
