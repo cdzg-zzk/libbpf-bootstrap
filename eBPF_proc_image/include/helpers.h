@@ -83,7 +83,7 @@ const char *mfutex_ctrl_path = "/sys/fs/bpf/proc_image_map/mfutex_ctrl_map";
 
 
 const char* schedule_out_path = "/home/zzk/libbpf-bootstrap/eBPF_proc_image/res_out/schedule_out.txt";
-
+const char* syscall_out_path = "/home/zzk/libbpf-bootstrap/eBPF_proc_image/res_out/syscall_out.txt";
 
 struct proc_syscall_info {
     int first_syscall;

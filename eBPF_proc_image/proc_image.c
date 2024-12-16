@@ -1,21 +1,3 @@
-// Copyright 2023 The LMP Authors.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// https://github.com/linuxkerneltravel/lmp/blob/develop/LICENSE
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-//
-// author: zhangziheng0525@163.com
-//
-// user-mode code for the process image
-
 #include <argp.h>
 #include <signal.h>
 #include <stdio.h>
@@ -131,14 +113,14 @@ static struct syms_cache *sched_syms_cache = NULL;
 static struct ksyms *sched_ksyms = NULL;
 
 int schedule_fd;
-
+int syscall_fd;
 // char *task_state[] = {"TASK_RUNNING", "TASK_INTERRUPTIBLE", "TASK_UNINTERRUPTIBLE", 
 //                       "", "__TASK_STOPPED", "", "", "", "__TASK_TRACED"};
-#define GET_STATE_STR(state) 	strcpy(str, (state)); \
+#define GET_STATE_STR(state) 	strncpy(str, (state), 29); \
 								break;
 
 const char* get_task_state(int state) {
-	static char str[20];
+	static char str[30];
 	switch (state)
 	{
 	case 0:
@@ -431,7 +413,7 @@ static int print_schedule(void *ctx, void *data,unsigned long data_sz)
 		case sizeof(struct timestamp_t):
 			struct timestamp_t *timestamp_val = (struct timestamp_t*)data;
 			char timestamp_str[256];
-			int timestamp_bytes = sprintf(timestamp_str, "timestamp: %lld  [%s]  data size: %ld\n", timestamp_state[timestamp_val->ts_type], timestamp_val->timestamp, data_sz);
+			int timestamp_bytes = sprintf(timestamp_str, "timestamp: %llu  [%s]  data size: %ld\n", timestamp_val->timestamp, timestamp_state[timestamp_val->ts_type], data_sz);
 			if(write(schedule_fd, timestamp_str, timestamp_bytes) != timestamp_bytes) {
 				fprintf(stderr, "Failed to write timestamp str\n");
 			}
@@ -441,31 +423,53 @@ static int print_schedule(void *ctx, void *data,unsigned long data_sz)
 	return 0;
 }
 
-static long softirq_count = 0;
+#define GET_SYSCALL_NAME (syscall_val->syscall_id<syscall_names_size?syscall_names[syscall_val->syscall_id]:"[Unknow syscall]")
+#define GET_SOFTIRQ_NAME (soft_val->vec_nr<NR_SOFTIRQS?vec_names[soft_val->vec_nr]:"[Unknow softirq]")
+#define GET_SIGNAL_NAME(sig) (((sig) < ARRAY_SIZE(sig_name)) ? sig_name[(sig)] : "[Extened signal]")
 static int print_syscall(void *ctx, void *data,unsigned long data_sz)
 {
+	int written_bytes = 0;
 	switch(data_sz)
 	{
 		case sizeof(struct syscall_val_t):
 			struct syscall_val_t* syscall_val = (struct syscall_val_t*)data;
-			printf("data size: %ld   syscall time: %llu   syscall: %s   duration: %llu  ret: %d\n", data_sz, syscall_val->timestamp, syscall_val->syscall_id<syscall_names_size?syscall_names[syscall_val->syscall_id]:"[Unknow syscall]", syscall_val->duration, syscall_val->ret);
+			char syscall_str[256];
+			written_bytes = sprintf(syscall_str, "data size: %ld  timestamp: %llu  [syscall]: %s   duration: %llu  ret: %d\n", data_sz, syscall_val->timestamp, GET_SYSCALL_NAME, syscall_val->duration, syscall_val->ret);
+			if(write(syscall_fd, syscall_str, written_bytes) != written_bytes) {
+				fprintf(stderr, "Failed to write syscall str\n");
+			}
 			break;
 		case sizeof(struct softirq_val_t):
-			softirq_count++;
 			struct softirq_val_t* soft_val = (struct softirq_val_t*)data;
-			printf("data size: %ld   softirq time: %llu   softirq: %s   duration: %llu  count: %d\n", data_sz, soft_val->timestamp, soft_val->vec_nr<NR_SOFTIRQS?vec_names[soft_val->vec_nr]:"[Unknow softirq]", soft_val->duration, softirq_count);
+			char softirq_str[256];
+			written_bytes = sprintf(softirq_str, "data size: %ld  timestamp: %llu  [softirq]: %s   duration: %llu\n", data_sz, soft_val->timestamp, GET_SOFTIRQ_NAME, soft_val->duration);
+			if(write(syscall_fd, softirq_str, written_bytes) != written_bytes) {
+				fprintf(stderr, "Failed to write softirq str\n");
+			}
 			break;
 		case sizeof(struct hardirq_val_t):
 			struct hardirq_val_t* hardirq_val = (struct hardirq_val_t*)data;
-			printf("data size: %ld   hardirq time: %llu    hardirq: %s    duration: %llu\n", data_sz, hardirq_val->timestamp, hardirq_val->hardirq_name, hardirq_val->duration);
+			char hardirq_str[256];
+			written_bytes = sprintf(hardirq_str, "data size: %ld  timestamp: %llu  [hardirq]: %s    duration: %llu\n", data_sz, hardirq_val->timestamp, hardirq_val->hardirq_name, hardirq_val->duration);
+			if(write(syscall_fd, hardirq_str, written_bytes) != written_bytes) {
+				fprintf(stderr, "Failed to write hardirq str\n");
+			}
 			break;
 		case sizeof(struct signal_handle_val_t):
 			struct signal_handle_val_t *signal_handle_val = (struct signal_handle_val_t*)data;
-			printf("data size: %ld   signal time: %llu    signal: %d    duration: %llu\n", data_sz, signal_handle_val->timestamp, signal_handle_val->sig, signal_handle_val->duration);
+			char signal_handle_str[256];
+			written_bytes = sprintf(signal_handle_str, "data size: %ld  timestamp: %llu  [signal]: %s    duration: %llu\n", data_sz, signal_handle_val->timestamp, GET_SIGNAL_NAME(signal_handle_val->sig), signal_handle_val->duration);
+			if(write(syscall_fd, signal_handle_str, written_bytes) != written_bytes) {
+				fprintf(stderr, "Failed to write signal handle str\n");
+			}
 			break;
 		case sizeof(struct signal_val_t):
 			struct signal_val_t *signal_val = (struct signal_val_t*)data;
-			printf("data size: %ld   signal time: %llu    signal: %d\n", data_sz, signal_val->timestamp, signal_val->sig);
+			char signal_str[256];
+			written_bytes = sprintf(signal_str, "data size: %ld  timestamp: %llu  [signal]: %s\n", data_sz, signal_val->timestamp, GET_SIGNAL_NAME(signal_val->sig));
+			if(write(syscall_fd, signal_str, written_bytes) != written_bytes) {
+				fprintf(stderr, "Failed to write signal str\n");
+			}
 			break;
 		default:
 			break;
@@ -966,6 +970,12 @@ int main(int argc, char **argv)
 			fprintf(stderr, "Failed to create syscall ring buffer\n");
 			goto cleanup;
 		}
+		syscall_fd = open(syscall_out_path, O_RDWR | O_CREAT | O_TRUNC, 0666);
+		if(syscall_fd < 0) {
+			err = -1;
+			fprintf(stderr, "Failed to create syscall out file\n");
+			goto cleanup;
+		}
 	}
 
 	if(env.enable_lock){
@@ -1268,22 +1278,6 @@ int main(int argc, char **argv)
 				break;
 			}
 		}
-		// if(env.enable_schedule && env.output_schedule){
-		// 	// err = print_schedule(schedule_skel->maps.proc_schedule,schedule_skel->maps.target_schedule,
-		// 	// 					 schedule_skel->maps.sys_schedule,schedmap_fd);
-		// 	printf("3\n");
-
-		// 	// print_offcpu_map();
-		// 	// print_wakeup_map();
-		// 	/* Ctrl-C will cause -EINTR */
-		// 	// if (err == -EINTR) {
-		// 	// 	err = 0;
-		// 	// 	break;
-		// 	// }
-		// 	// if (err < 0) {
-		// 	// 	break;
-		// 	// }
-		// }
 	}
 
 /* 卸载BPF程序 */
@@ -1297,6 +1291,7 @@ cleanup:
 		ring_buffer__free(syscall_rb);
 		hashmap_free(map);
 		syscall_image_bpf__destroy(syscall_skel);
+		close(syscall_fd);
 	}
 	if(env.enable_lock){
 		bpf_map__unpin(lock_ctrl_map, lock_ctrl_path);

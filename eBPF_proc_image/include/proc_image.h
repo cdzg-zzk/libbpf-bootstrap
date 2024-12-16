@@ -38,6 +38,8 @@ typedef unsigned int u32;
 #define MAX_STACK_DEPTH 128
 typedef __u64 stack_trace_t[MAX_STACK_DEPTH];
 
+#define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
+
 // resource_image
 struct rsc_ctrl{
 	bool rsc_func;
@@ -305,11 +307,12 @@ struct syscall_enter_t {
 	int syscall_id;
 	u64 timestamp;    // enter: enter_timestamp    exit: exit_timestamp;
 };
+// size: 32
 struct syscall_val_t {
 	int syscall_id;
+	int ret;
 	u64 timestamp;    // enter: enter_timestamp    exit: exit_timestamp;
 	u64 duration;
-	int ret;
 };
 // struct syscall_count_t {
 // 	int counts;
@@ -320,8 +323,9 @@ struct softirq_enter_t {
 	unsigned int vec_nr;
 	u64 timestamp;
 };
-
+// size: 24
 struct softirq_val_t {
+	int dummy[2];
 	unsigned int vec_nr;
 	u64 timestamp;    // enter: enter_timestamp    exit: exit_timestamp;
 	u64 duration;
@@ -331,20 +335,22 @@ struct hardirq_enter_t {
 	unsigned int irq;
 	u64 timestamp;
 };
+// size: 56
 struct hardirq_val_t {
-	char hardirq_name[32];
+	unsigned int irq;
 	u64 timestamp;    // enter: enter_timestamp    exit: exit_timestamp;
 	u64 duration;
-	unsigned int irq;
+	char hardirq_name[32];
 };
-
+// size: 40
 struct signal_handle_val_t {
 	// enum interrup_type type;
 	int sig;
+	int dummy[4];
 	u64 timestamp;
 	u64 duration;
-	int dummy[3];
 };
+// size: 16
 struct signal_val_t {
 	// enum interrup_type type;
 	int sig;
