@@ -1,5 +1,5 @@
-#ifndef __PROC_IMAGE_H
-#define __PROC_IMAGE_H
+#ifndef __COMM_H
+#define __COMM_H
 
 
 #define PF_KTHREAD		0x00200000	/* I am a kernel thread */
@@ -15,7 +15,7 @@ struct sc_ctrl {
     pid_t target_pid;
 };
 
-// schedule_image
+// schedule_trace
 struct sched_ctrl {
     bool sched_func;
     pid_t target_pid;
@@ -127,4 +127,4 @@ struct signal_val_t {
 	int sig;
 	u64 timestamp;
 };
-#endif /* __PROCESS_H */
+#endif /* __COMM_H */

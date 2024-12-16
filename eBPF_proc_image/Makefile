@@ -1,22 +1,3 @@
-# Copyright 2023 The LMP Authors.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# https://github.com/linuxkerneltravel/lmp/blob/develop/LICENSE
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-# author: zhangziheng0525@163.com
-#
-# compile the current folder code
-
-# SPDX-License-Identifier: (LGPL-2.1 OR BSD-2-Clause)
 OUTPUT := .output
 CLANG ?= clang
 LIBBPF_SRC := $(abspath ../libbpf/src)
@@ -41,8 +22,8 @@ INCLUDES := -I$(OUTPUT) -I../libbpf/include/uapi -I$(LIBBLAZESYM_INC) -I./includ
 CFLAGS := -g -Wall
 ALL_LDFLAGS := $(LDFLAGS) $(EXTRA_LDFLAGS)
 
-APPS = interrupt_trace schedule_image
-WORKTOOL := proc_image
+APPS = interrupt_trace schedule_trace
+WORKTOOL := lifecycle
 CONTROLLER := controller
 
 SRC_DIR = ./include
@@ -147,16 +128,7 @@ $(WORKTOOL): %: $(OUTPUT)/%.o $(COMMON_OBJ) $(LIBBPF_OBJ) | $(OUTPUT)
 	@[ -f $(OUTPUT)/data/offcpu_stack.txt ] || touch $(OUTPUT)/data/offcpu_stack.txt
 
 SUCCESS_MESSAGE:
-	@echo "        ____  ____  ______   ____                     ____                         "
-	@echo "  ___  / __ )/ __ \/ ____/  / __ \_________  _____   /  _/___ ___  ____ _____ ____ "
-	@echo " / _ \/ __  / /_/ / /_     / /_/ / ___/ __ \/ ___/   / // __ \`__ \/ __ \`/ __ \`/ _ \\"
-	@echo "/  __/ /_/ / ____/ __/    / ____/ /  / /_/ / /__   _/ // / / / / / /_/ / /_/ /  __/"
-	@echo "\___/_____/_/   /_/      /_/   /_/   \____/\___/  /___/_/ /_/ /_/\__,_/\__, /\___/ "
-	@echo "                                                                      /____/        "
-	@echo "Successful to compile eBPF_proc_image tools:"
-	@echo "proc_image ——— Pre-attach to eBPF program, data is collected and output after activation"
-	@echo "controller ——— Controller for proc_image tool"
-	@echo "Please start your use ~"
+	@echo "Successful to compile Linux process lifecycle tools:"
 
 # delete failed targets
 .DELETE_ON_ERROR:

@@ -17,15 +17,11 @@
 #include <bpf/bpf_core_read.h>
 #include <bpf/bpf_tracing.h>
 #include "maps.bpf.h"
-#include "proc_image.h"
+#include "comm.h"
 
 char LICENSE[] SEC("license") = "Dual BSD/GPL";
-#define MAX_NODENAME_LEN 64
-const volatile pid_t ignore_tgid = -1;
-// const volatile char hostname[MAX_NODENAME_LEN] = "";
+
 const int key = 0;
-pid_t pre_target_pid = -1;//上一个监测的进程；
-int pre_target_tgid = -1;//上一个监测的进程组；
 
 struct {
 	__uint(type, BPF_MAP_TYPE_ARRAY);
@@ -356,25 +352,6 @@ int BPF_PROG(irq_handler_exit_btf, int irq, struct irqaction *action)
 }
 
 
-
-// // 从哈希表中删除退出进程的数据，防止哈希表溢出
-// SEC("tracepoint/sched/sched_process_exit")
-// int sched_process_exit(void *ctx)
-// {
-//     struct sc_ctrl *sc_ctrl;
-// 	sc_ctrl = bpf_map_lookup_elem(&sc_ctrl_map,&key);
-// 	if(!sc_ctrl || !sc_ctrl->sc_func)
-// 		return 0;
-    
-//     struct task_struct *p = (struct task_struct *)bpf_get_current_task();
-//     pid_t pid = BPF_CORE_READ(p,pid);
-
-//     bpf_map_delete_elem(&proc_syscall,&pid);
-
-//     return 0;
-// }
-
-
 // struct sigaction {
 // 	__sighandler_t sa_handler;
 // 	long unsigned int sa_flags;
@@ -492,3 +469,21 @@ int BPF_PROG(signal_deliver_btf, int signr, kernel_siginfo_t* info, struct k_sig
     bpf_ringbuf_submit(val, 0);
     return 0;
 }
+
+
+// // 从哈希表中删除退出进程的数据，防止哈希表溢出
+// SEC("tracepoint/sched/sched_process_exit")
+// int sched_process_exit(void *ctx)
+// {
+//     struct sc_ctrl *sc_ctrl;
+// 	sc_ctrl = bpf_map_lookup_elem(&sc_ctrl_map,&key);
+// 	if(!sc_ctrl || !sc_ctrl->sc_func)
+// 		return 0;
+    
+//     struct task_struct *p = (struct task_struct *)bpf_get_current_task();
+//     pid_t pid = BPF_CORE_READ(p,pid);
+
+//     bpf_map_delete_elem(&proc_syscall,&pid);
+
+//     return 0;
+// }

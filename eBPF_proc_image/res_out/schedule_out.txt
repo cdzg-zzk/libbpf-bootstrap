@@ -1,0 +1,106 @@
+timestamp: 270156392745924  [WAKEUP]  data size: 16
+    #0   bpf_prog_772503846206c645_wakeup
+    #1   bpf_prog_772503846206c645_wakeup
+    #2   bpf_prog_ba0fbfbe78490385_sched_wakeup
+    #3   bpf_trace_run1
+    #4   __bpf_trace_sched_wakeup_template
+    #5   __traceiter_sched_wakeup
+    #6   ttwu_do_activate
+    #7   try_to_wake_up
+    #8   wake_up_q
+    #9   cpu_stop_queue_work
+    #10  stop_one_cpu_nowait
+    #11  watchdog_timer_fn
+    #12  __hrtimer_run_queues
+    #13  hrtimer_interrupt
+    #14  __sysvec_apic_timer_interrupt
+    #15  sysvec_apic_timer_interrupt
+    #16  asm_sysvec_apic_timer_interrupt
+    #17  do_syscall_64
+    #18  entry_SYSCALL_64_after_hwframe
+CPU: 1   [proc_image] pid: 112000  wake up target proc
+timestamp: 270156392765225  [ONCPU]  data size: 16
+timestamp: 270156392771354  [OFFCPU]  data size: 16
+    #0   bpf_prog_17d59967dbe25861_sched_switch
+    #1   bpf_prog_17d59967dbe25861_sched_switch
+    #2   bpf_trace_run4
+    #3   __bpf_trace_sched_switch
+    #4   __traceiter_sched_switch
+    #5   __schedule
+    #6   schedule
+    #7   smpboot_thread_fn
+    #8   kthread
+    #9   ret_from_fork
+    #10  ret_from_fork_asm
+CPU: 1   state: TASK_INTERRUPTIBLE  switch to [proc_image]  next pid: 112000
+timestamp: 270156392773164  [SWITCH]  data size: 16
+timestamp: 270160392744001  [WAKEUP]  data size: 16
+    #0   bpf_prog_772503846206c645_wakeup
+    #1   bpf_prog_772503846206c645_wakeup
+    #2   bpf_prog_ba0fbfbe78490385_sched_wakeup
+    #3   bpf_trace_run1
+    #4   __bpf_trace_sched_wakeup_template
+    #5   __traceiter_sched_wakeup
+    #6   ttwu_do_activate
+    #7   try_to_wake_up
+    #8   wake_up_q
+    #9   cpu_stop_queue_work
+    #10  stop_one_cpu_nowait
+    #11  watchdog_timer_fn
+    #12  __hrtimer_run_queues
+    #13  hrtimer_interrupt
+    #14  __sysvec_apic_timer_interrupt
+    #15  sysvec_apic_timer_interrupt
+    #16  asm_sysvec_apic_timer_interrupt
+    #17  do_syscall_64
+    #18  entry_SYSCALL_64_after_hwframe
+CPU: 1   [proc_image] pid: 112000  wake up target proc
+timestamp: 270160392760890  [ONCPU]  data size: 16
+timestamp: 270160392763881  [OFFCPU]  data size: 16
+    #0   bpf_prog_17d59967dbe25861_sched_switch
+    #1   bpf_prog_17d59967dbe25861_sched_switch
+    #2   bpf_trace_run4
+    #3   __bpf_trace_sched_switch
+    #4   __traceiter_sched_switch
+    #5   __schedule
+    #6   schedule
+    #7   smpboot_thread_fn
+    #8   kthread
+    #9   ret_from_fork
+    #10  ret_from_fork_asm
+CPU: 1   state: TASK_INTERRUPTIBLE  switch to [proc_image]  next pid: 112000
+timestamp: 270160392765730  [SWITCH]  data size: 16
+timestamp: 270164392743460  [WAKEUP]  data size: 16
+    #0   bpf_prog_772503846206c645_wakeup
+    #1   bpf_prog_772503846206c645_wakeup
+    #2   bpf_prog_ba0fbfbe78490385_sched_wakeup
+    #3   bpf_trace_run1
+    #4   __bpf_trace_sched_wakeup_template
+    #5   __traceiter_sched_wakeup
+    #6   ttwu_do_activate
+    #7   try_to_wake_up
+    #8   wake_up_q
+    #9   cpu_stop_queue_work
+    #10  stop_one_cpu_nowait
+    #11  watchdog_timer_fn
+    #12  __hrtimer_run_queues
+    #13  hrtimer_interrupt
+    #14  __sysvec_apic_timer_interrupt
+    #15  sysvec_apic_timer_interrupt
+    #16  asm_sysvec_apic_timer_interrupt
+CPU: 1   [proc_image] pid: 112000  wake up target proc
+timestamp: 270164392759891  [ONCPU]  data size: 16
+timestamp: 270164392762960  [OFFCPU]  data size: 16
+    #0   bpf_prog_17d59967dbe25861_sched_switch
+    #1   bpf_prog_17d59967dbe25861_sched_switch
+    #2   bpf_trace_run4
+    #3   __bpf_trace_sched_switch
+    #4   __traceiter_sched_switch
+    #5   __schedule
+    #6   schedule
+    #7   smpboot_thread_fn
+    #8   kthread
+    #9   ret_from_fork
+    #10  ret_from_fork_asm
+CPU: 1   state: TASK_INTERRUPTIBLE  switch to [proc_image]  next pid: 112000
+timestamp: 270164392765200  [SWITCH]  data size: 16

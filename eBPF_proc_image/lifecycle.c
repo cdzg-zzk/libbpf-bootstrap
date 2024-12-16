@@ -10,10 +10,10 @@
 #include <pthread.h>
 #include <bpf/libbpf.h>
 #include <bpf/bpf.h>
-#include "proc_image.h"
+#include "comm.h"
 
 #include "interrupt_trace.skel.h"
-#include "schedule_image.skel.h"
+#include "schedule_trace.skel.h"
 
 #include "hashmap.h"
 #include "helpers.h"
@@ -35,7 +35,7 @@ static struct env {
 
 
 struct interrupt_trace_bpf *interrupt_skel = NULL;
-struct schedule_image_bpf *schedule_skel = NULL;
+struct schedule_trace_bpf *schedule_skel = NULL;
 
 int schedule_fd;
 int syscall_fd;
@@ -387,7 +387,7 @@ int main(int argc, char **argv)
 
 	if(env.enable_schedule){
 		printf("enter enable_sched\n");
-		schedule_skel = schedule_image_bpf__open();
+		schedule_skel = schedule_trace_bpf__open();
 		if(!schedule_skel) {
 			fprintf(stderr, "Failed to open BPF schedule skeleton\n");
 			return 1;
@@ -401,7 +401,7 @@ int main(int argc, char **argv)
 	// else
 	// 	bpf_program__set_autoload(schedule_skel->progs.sched_switch_raw, false);
 
-		err = schedule_image_bpf__load(schedule_skel);
+		err = schedule_trace_bpf__load(schedule_skel);
 		if (err) {
 			fprintf(stderr, "Failed to load and verify BPF schedule skeleton\n");
 			goto cleanup;
@@ -429,7 +429,7 @@ int main(int argc, char **argv)
 			fprintf(stderr, "failed to create syms_cache\n");
 			goto cleanup;
 		}
-		err = schedule_image_bpf__attach(schedule_skel);
+		err = schedule_trace_bpf__attach(schedule_skel);
 		if (err) {
 			fprintf(stderr, "Failed to attach BPF schedule skeleton\n");
 			goto cleanup;
@@ -490,7 +490,7 @@ cleanup:
 	if(env.enable_schedule){
 		bpf_map__unpin(sched_ctrl_map, sched_ctrl_path);
 		ring_buffer__free(sched_rb);
-		schedule_image_bpf__destroy(schedule_skel);
+		schedule_trace_bpf__destroy(schedule_skel);
 		syms_cache__free(sched_syms_cache);
 		ksyms__free(sched_ksyms);
 		close(schedule_fd);

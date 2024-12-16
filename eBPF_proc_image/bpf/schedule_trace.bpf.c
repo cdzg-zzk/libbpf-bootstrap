@@ -20,7 +20,7 @@
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_core_read.h>
 #include <bpf/bpf_tracing.h>
-#include "proc_image.h"
+#include "comm.h"
 #include "maps.bpf.h"
 char LICENSE[] SEC("license") = "Dual BSD/GPL";
 

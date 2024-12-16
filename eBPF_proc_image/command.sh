@@ -2,4 +2,4 @@
 
 sudo make clean
 sudo make -j20
-sudo ./proc_image -s
+sudo ./lifecycle -s

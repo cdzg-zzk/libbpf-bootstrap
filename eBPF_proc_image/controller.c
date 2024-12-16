@@ -8,7 +8,7 @@
 #include <bpf/libbpf.h>
 #include <bpf/bpf.h>
 #include <pthread.h>
-#include "proc_image.h"
+#include "comm.h"
 #include "hashmap.h"
 #include "helpers.h"
 
@@ -20,7 +20,7 @@ static struct env {
     int syscalls;
     bool enable_myproc;
 	bool output_schedule;
-    bool enable_syscall;
+    bool enable_interrupt;
     bool enable_schedule;
 }  env = {
     .usemode = 0,
@@ -28,21 +28,20 @@ static struct env {
     .syscalls = 0,
 	.enable_myproc = false,
 	.output_schedule = false,
-    .enable_syscall = false,
+    .enable_interrupt = false,
     .enable_schedule = false,
 };
 
 const char argp_program_doc[] ="Trace process to get process image.\n";
 
 static const struct argp_option opts[] = {
-    { "activate", 'a', NULL, 0, "Set startup policy of proc_image tool" },
-    { "deactivate", 'd', NULL, 0, "Initialize to the original deactivated state" },
-    { "finish", 'f', NULL, 0, "Finish to run eBPF tool" },
-	{ "pid", 'p', "PID", 0, "Process ID to trace" },
+    { "activate", 'a', NULL, 0, "Start the monitoring tool for lifecycle of process" },
+    { "deactivate", 'd', NULL, 0, "Stop monitoring tool for lifecycle" },
+    { "finish", 'f', NULL, 0, "Finish monitoring tool" },
+	{ "pid", 'p', "PID", 0, "Target process ID to trace" },
     { "time", 't', "TIME-SEC", 0, "Max Running Time(0 for infinite)" },
-    { "myproc", 'm', NULL, 0, "Trace the process of the tool itself (not tracked by default)" },
-    { "syscall", 's', NULL, 0, "Collects syscall sequence (1~50) information about processes(any 1~50 when deactivated)" },
-    { "schedule", 'S', NULL, 0, "Collects schedule information about processes (trace tool process)" },
+    { "interrupt", 'i', NULL, 0, "Trace interrupt information of target process(including syscall, softirq, hardirq, signal)" },
+    { "schedule", 's', NULL, 0, "Trace schedule information of target process" },
     { NULL, 'h', NULL, OPTION_HIDDEN, "show the help" },
     {},
 };
@@ -71,17 +70,14 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 				}
 				env.pid = pid;
 				break;
-        case 'm':
-				env.enable_myproc = true;
-				break;
 		case 't':
 				env.time = strtol(arg, NULL, 10);
 				if(env.time) alarm(env.time);
 				break;
-        case 's':
-				env.enable_syscall = true;
+        case 'i':
+				env.enable_interrupt = true;
                 break;
-        case 'S':
+        case 's':
                 env.enable_schedule = true;
                 break;
         case 'h':
@@ -96,7 +92,7 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 
 int deactivate_mode(){
     int err;
-    if(env.enable_syscall){
+    if(env.enable_interrupt){
         struct sc_ctrl sc_ctrl = {false,-1};
         err = update_sc_ctrl_map(sc_ctrl);
         if(err < 0) return err;
@@ -134,7 +130,7 @@ int main(int argc, char **argv)
 	signal(SIGTERM,sig_handler);
     // update_xx_ctrl_map()可以优化
     if(env.usemode == 1){                   // activate mode
-        if(env.enable_syscall){
+        if(env.enable_interrupt){
             printf("syscall\n");
             struct sc_ctrl sc_ctrl = {true,env.pid};
             err = update_sc_ctrl_map(sc_ctrl);
@@ -156,7 +152,7 @@ int main(int argc, char **argv)
             return err;
         }
     }else if(env.usemode == 3){             // finish mode
-        const char *command = "pkill proc_image";
+        const char *command = "pkill lifecycle";
         int status = system(command);
         if (status == -1) {
             perror("system");
