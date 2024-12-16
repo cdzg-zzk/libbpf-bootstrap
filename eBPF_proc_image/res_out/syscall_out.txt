@@ -1,0 +1,27 @@
+data size: 24  timestamp: 264586563420400  [syscall]: write   duration: 4541  ret: 22
+data size: 24  timestamp: 264586563426469  [syscall]: write   duration: 619  ret: 1
+data size: 24  timestamp: 264586563428139  [syscall]: write   duration: 769  ret: 59
+data size: 24  timestamp: 264586563429069  [syscall]: write   duration: 570  ret: 26
+data size: 24  timestamp: 264586563430320  [syscall]: write   duration: 840  ret: 64
+data size: 24  timestamp: 264586563431810  [syscall]: getpid   duration: 901  ret: 93791
+data size: 24  timestamp: 264587563539712  [syscall]: clock_nanosleep   duration: 1000107142  ret: 0
+data size: 24  timestamp: 264587563551323  [syscall]: getpid   duration: 1240  ret: 93791
+data size: 24  timestamp: 264588563647048  [syscall]: clock_nanosleep   duration: 1000094955  ret: 0
+data size: 24  timestamp: 264588563658557  [syscall]: getpid   duration: 1050  ret: 93791
+data size: 24  timestamp: 264589563756734  [syscall]: clock_nanosleep   duration: 1000097267  ret: 0
+data size: 24  timestamp: 264589563768974  [syscall]: getpid   duration: 1251  ret: 93791
+data size: 24  timestamp: 264590563869661  [syscall]: clock_nanosleep   duration: 1000099758  ret: 0
+data size: 24  timestamp: 264590563883160  [syscall]: getpid   duration: 1560  ret: 93791
+data size: 24  timestamp: 264591563990039  [syscall]: clock_nanosleep   duration: 1000105898  ret: 0
+data size: 32  timestamp: 264591564014319  [softirq]: sched   duration: 3920
+data size: 24  timestamp: 264591564017710  [syscall]: getpid   duration: 931  ret: 93791
+data size: 24  timestamp: 264592564121259  [syscall]: clock_nanosleep   duration: 1000102460  ret: 0
+data size: 24  timestamp: 264592564133840  [syscall]: getpid   duration: 1461  ret: 93791
+data size: 24  timestamp: 264593564233821  [syscall]: clock_nanosleep   duration: 1000098941  ret: 0
+data size: 24  timestamp: 264593564245372  [syscall]: getpid   duration: 1411  ret: 93791
+data size: 24  timestamp: 264594564315043  [syscall]: clock_nanosleep   duration: 1000068962  ret: 0
+data size: 24  timestamp: 264594564325033  [syscall]: getpid   duration: 900  ret: 93791
+data size: 24  timestamp: 264595564437078  [syscall]: clock_nanosleep   duration: 1000111245  ret: 0
+data size: 24  timestamp: 264595564451598  [syscall]: getpid   duration: 1600  ret: 93791
+data size: 24  timestamp: 264596564552853  [syscall]: clock_nanosleep   duration: 1000100055  ret: 0
+data size: 24  timestamp: 264596564573484  [syscall]: lseek   duration: 2090  ret: -29

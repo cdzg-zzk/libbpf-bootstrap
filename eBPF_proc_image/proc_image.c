@@ -11,111 +11,45 @@
 #include <bpf/libbpf.h>
 #include <bpf/bpf.h>
 #include "proc_image.h"
-#include "resource_image.skel.h"
+
 #include "syscall_image.skel.h"
-#include "lock_image.skel.h"
-#include "keytime_image.skel.h"
 #include "schedule_image.skel.h"
-#include "mfutex.skel.h"
+
 #include "hashmap.h"
 #include "helpers.h"
 #include "trace_helpers.h"
 #include "syscall_helpers.h"
 
-static int prev_image = 0;
 static volatile bool exiting = false;
-static const char object[] = "/usr/lib/x86_64-linux-gnu/libc.so.6";
+
 static struct env {
-	int ignore_tgid;
-	bool output_resourse;
-	bool output_schedule;
-	bool create_thread;
-	bool exit_thread;
-    bool enable_resource;
-	bool first_rsc;
-	u64 sum_delay;
-	u64 sum_count;
-	u64 max_delay;
-	u64 min_delay;
-	bool enable_hashmap;
+	int self_tgid;
 	bool enable_syscall;
-	bool enable_lock;
-	int max_args;
-	bool enable_keytime;
-	int stack_count;
 	bool enable_schedule;
-	int rsc_prev_tgid;
-	int kt_prev_tgid;
-	int lock_prev_tgid;
 	int sc_prev_tgid;
-	char hostname[64];
-	bool enable_mfutex;
 } env = {
-	.output_resourse = false,
-	.output_schedule = false,
-	.create_thread = false,
-	.exit_thread = false,
-    .enable_resource = false,
-	.first_rsc = true,
-	.sum_delay = 0,
-	.sum_count = 0,
-	.max_delay = 0,
-	.min_delay = 0,
-	.enable_hashmap = false,
 	.enable_syscall = false,
-	.enable_lock = false,
-	.max_args = DEFAULT_MAXARGS,
-	.enable_keytime = false,
-	.stack_count = 0,
 	.enable_schedule = false,
-	.rsc_prev_tgid = 0,
-	.kt_prev_tgid = 0,
-	.lock_prev_tgid = 0,
 	.sc_prev_tgid = 0,
-	.hostname = "",
-	.enable_mfutex = false,
 };
 
-struct hashmap *map = NULL;
-struct resource_image_bpf *resource_skel = NULL;
+
 struct syscall_image_bpf *syscall_skel = NULL;
-struct lock_image_bpf *lock_skel = NULL;
-struct keytime_image_bpf *keytime_skel = NULL;
 struct schedule_image_bpf *schedule_skel = NULL;
-struct mfutex_bpf *mfutex_skel = NULL;
-
-
-static int scmap_fd;
-static int rscmap_fd;
-static int lockmap_fd;
-static int ktmap_fd;
-static int schedmap_fd;
-static int mfutexmap_fd;
-
-static struct timespec prevtime;
-static struct timespec currentime;
-
-char *lock_status[] = {"", "mutex_req", "mutex_lock", "mutex_unlock",
-						   "rdlock_req", "rdlock_lock", "rdlock_unlock",
-						   "wrlock_req", "wrlock_lock", "wrlock_unlock",
-						   "spinlock_req", "spinlock_lock", "spinlock_unlock"};
-char *mfutex_type[] = {"","MUTEX","RW_LOCK","SPIN_LOCK","RCU_LOCK","FUTEX_LOCK"};
-
-char *keytime_type[] = {"", "exec_enter", "exec_exit", 
-						    "exit", 
-						    "forkP_enter", "forkP_exit",
-						    "vforkP_enter", "vforkP_exit",
-						    "createT_enter", "createT_exit",
-							"onCPU", "offCPU",};
-
-static struct ksyms *ksyms = NULL;
-static struct syms_cache *sched_syms_cache = NULL;
-static struct ksyms *sched_ksyms = NULL;
 
 int schedule_fd;
 int syscall_fd;
-// char *task_state[] = {"TASK_RUNNING", "TASK_INTERRUPTIBLE", "TASK_UNINTERRUPTIBLE", 
-//                       "", "__TASK_STOPPED", "", "", "", "__TASK_TRACED"};
+
+static int scmap_fd;
+static int schedmap_fd;
+
+
+
+static struct syms_cache *sched_syms_cache = NULL;
+static struct ksyms *sched_ksyms = NULL;
+
+
+
 #define GET_STATE_STR(state) 	strncpy(str, (state), 29); \
 								break;
 
@@ -156,19 +90,14 @@ const char* get_task_state(int state) {
 }
 char *timestamp_state[] = {"OFFCPU", "ONCPU", "WAKEUP", "WAKEUPNEW", "SWITCH", "SYSCALL"};
 
-//u32 syscalls[NR_syscalls] = {};
 
-const char argp_program_doc[] ="Trace process to get process image.\n";
+const char argp_program_doc[] ="Trace the lifecycle of  target process to get process key information.\n";
 
 static const struct argp_option opts[] = {
 	{ "all", 'a', NULL, 0, "Attach all eBPF functions(but do not start)" },
-    { "resource", 'r', NULL, 0, "Attach eBPF functions about resource usage(but do not start)" },
 	{ "syscall", 's', NULL, 0, "Attach eBPF functions about syscall sequence(but do not start)" },
-	{ "lock", 'l', NULL, 0, "Attach eBPF functions about lock(but do not start)" },
-	{ "keytime", 'k', NULL, 0, "Attach eBPF functions about keytime(but do not start)" },
 	{ "schedule", 'S', NULL, 0, "Attach eBPF functions about schedule (but do not start)" },
-	{ "mfutex", 'm', NULL, 0, "Attach eBPF functions about mfutex (but do not start)" },
-    { NULL, 'h', NULL, OPTION_HIDDEN, "show the full help" },
+    { NULL, 'h', NULL, OPTION_HIDDEN, "show the help" },
 	{},
 };
 
@@ -176,31 +105,15 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
 	switch (key) {
 		case 'a':
-				env.enable_resource = true;
 				env.enable_syscall = true;
-				env.enable_lock = true;
-				env.enable_keytime = true;
 				env.enable_schedule = true;
-				env.enable_mfutex = true;
 				break;
-        case 'r':
-                env.enable_resource = true;
-                break;
 		case 's':
 				env.enable_syscall = true;
                 break;
-		case 'l':
-                env.enable_lock = true;
-                break;
-		case 'k':
-				env.enable_keytime = true;
-				break;
 		case 'S':
 				env.enable_schedule = true;
 				break;
-		case 'm':
-				env.enable_mfutex = true;
-				break;		
 		case 'h':
 				argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
 				break;
@@ -211,101 +124,6 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 	return 0;
 }
 
-static int print_resource(struct bpf_map *map,int rscmap_fd)
-{
-	int err,key = 0;
-	struct rsc_ctrl rsc_ctrl ={};
-
-	err = bpf_map_lookup_elem(rscmap_fd,&key,&rsc_ctrl);
-	if (err < 0) {
-		fprintf(stderr, "failed to lookup infos: %d\n", err);
-		return -1;
-	}
-	if(!rsc_ctrl.rsc_func)
-		return 0;
-	if(env.first_rsc){
-		env.first_rsc = false;
-		goto delete_elem;
-	}
-	
-	struct proc_id lookup_key = {-1,-1}, next_key;
-	int fd = bpf_map__fd(map);
-	struct total_rsc event;
-	float pcpu,pmem;
-	double read_rate,write_rate;
-	unsigned long memtotal = sysconf(_SC_PHYS_PAGES);
-    time_t now = time(NULL);
-    struct tm *localTime = localtime(&now);
-    int hour = localTime->tm_hour;
-    int min = localTime->tm_min;
-    int sec = localTime->tm_sec;
-	long long unsigned int interval;
-	int rsc_cur_tgid = 0;
-
-	if(rsc_ctrl.target_tgid != -1)	rsc_cur_tgid = 2;
-	else	rsc_cur_tgid = 1;
-    
-    while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
-		if(prev_image != RESOURCE_IMAGE || env.rsc_prev_tgid != rsc_cur_tgid){
-			printf("RESOURCE ------------------------------------------------------------------------------------------------\n");
-			printf("%-8s  ","TIME");
-			if(rsc_ctrl.target_tgid != -1){
-				printf("%-6s  ","TGID");
-				env.rsc_prev_tgid = 2;
-			}else{
-				env.rsc_prev_tgid = 1;
-			}
-			printf("%-6s  %-6s  %-6s  %-6s  %-12s  %-12s\n","PID","CPU-ID","CPU(%)","MEM(%)","READ(kb/s)","WRITE(kb/s)");
-			prev_image = RESOURCE_IMAGE;
-		}
-			
-		err = bpf_map_lookup_elem(fd, &next_key, &event);
-		if (err < 0) {
-			fprintf(stderr, "failed to lookup infos: %d\n", err);
-			return -1;
-		}
-		
-		clock_gettime(CLOCK_REALTIME, &currentime);
-		interval = currentime.tv_nsec-prevtime.tv_nsec+(currentime.tv_sec-prevtime.tv_sec)*1000000000;
-
-		if(interval>0 && memtotal>0 && event.time>0){
-			pcpu = (100.0*event.time)/interval;
-			pmem = (100.0*event.memused)/memtotal;
-			read_rate = (1.0*event.readchar)/1024/((1.0*event.time)/1000000000);            // kb/s
-			write_rate = (1.0*event.writechar)/1024/((1.0*event.time)/1000000000);          // kb/s
-		}else{
-			goto next_elem;
-		}
-		
-		if(pcpu<=100 && pmem<=100){
-			printf("%02d:%02d:%02d  ",hour,min,sec);
-			if(rsc_ctrl.target_tgid != -1)	printf("%-6d  ",event.tgid);
-			printf("%-6d  %-6d  %-6.3f  %-6.3f  %-12.2lf  %-12.2lf\n",
-					event.pid,event.cpu_id,pcpu,pmem,read_rate,write_rate);
-		}
-
-next_elem:
-		lookup_key = next_key;
-	}
-
-delete_elem:
-    lookup_key.pid = -1;	
-	lookup_key.cpu_id = -1;
-	while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
-		err = bpf_map_delete_elem(fd, &next_key);
-		if (err < 0) {
-			fprintf(stderr, "failed to cleanup infos: %d\n", err);
-			return -1;
-		}
-		lookup_key = next_key;
-	}
-
-	// 获取当前高精度时间
-    clock_gettime(CLOCK_REALTIME, &prevtime);
-	env.output_resourse = false;
-
-	return 0;
-}
 
 static void print_all_stack(int out_fd, int stack_fd, int kern_stack_id, int user_stack_id, int tgid, struct ksyms *ksyms, struct syms_cache *syms_cache)
 {
@@ -478,400 +296,25 @@ static int print_syscall(void *ctx, void *data,unsigned long data_sz)
 	return 0;
 }
 
-static int print_lock(void *ctx, void *data,unsigned long data_sz)
-{
-	const struct lock_event *e = data;
-	int lock_cur_tgid = 0;
-
-	if(e->tgid != -1)	lock_cur_tgid = 2;
-	else	lock_cur_tgid = 1;
-	
-	if(prev_image != LOCK_IMAGE || env.lock_prev_tgid != lock_cur_tgid){
-        printf("USERLOCK ------------------------------------------------------------------------------------------------\n");
-        printf("%-15s  ","TIME");
-		if(e->tgid != -1){
-			printf("%-6s  ","TGID");
-			env.lock_prev_tgid = 2;
-		} else {
-			env.lock_prev_tgid = 1;
-		}
-		printf("%-6s  %-15s  %s\n","PID","LockAddr","LockStatus");
-		prev_image = LOCK_IMAGE;
-    }
-
-	printf("%-15lld  ",e->time);
-	if(e->tgid != -1)	printf("%-6d  ",e->tgid);
-	printf("%-6d  %-15lld  ",e->pid,e->lock_ptr);
-	if(e->lock_status==2 || e->lock_status==5 || e->lock_status==8 || e->lock_status==11){
-		printf("%s-%d\n",lock_status[e->lock_status],e->ret);
-	}else{
-		printf("%s\n",lock_status[e->lock_status]);
-	}
-
-	return 0;
-}
-
-static int print_mfutex(void *ctx, void *data,unsigned long data_sz)
-{
-	const struct per_lock_event *e = data;
-	time_t now = time(NULL);// 获取当前时间
-	struct tm *localTime = localtime(&now);// 将时间转换为本地时间结构
-	printf("%02d:%02d:%02d   ",localTime->tm_hour, localTime->tm_min, localTime->tm_sec);
-	int type = e->type;
-	if(type == MUTEX_FLAG){
-		printf("%-12s  0x%-8x  %-11llu  %-11lu  %-16llu  %-10d\n",mfutex_type[e->type],e->lock_ptr,e->last_owner,e->last_hold_delay,e->start_hold_time,e->owner);
-		printf("%-81s","");
-		int err,record_lock_fd =bpf_map__fd(mfutex_skel->maps.record_lock);
-		struct record_lock_key lookup_key1 = {-1,-1}, next_key;
-		while(!bpf_map_get_next_key(record_lock_fd, &lookup_key1, &next_key)){
-			// printf("next_key:%x target_ptr:%x\n",next_key,e->lock_ptr);
-			if(next_key.lock_ptr != e->lock_ptr) {
-				lookup_key1 = next_key;
-				continue;//不是目标锁，跳过 
-			}
-			struct per_request per_request = {};
-			err = bpf_map_lookup_elem(record_lock_fd,&next_key,&per_request);
-			if (err < 0) {
-				// printf(stderr, "failed to lookup info: %d\n", err);
-				lookup_key1 = next_key;
-				continue;//不是目标锁，跳过 
-			}
-			float wait_delay = (e->start_hold_time-per_request.start_request_time)/1000000000.0;
-			if(wait_delay<=0||wait_delay>=10000)
-				printf("%d(NULL)|",per_request.pid);
-			else printf("%d(%ds)|",per_request.pid,((e->start_hold_time-per_request.start_request_time)/1000000000));
-			lookup_key1 = next_key;
-		}
-	}else if(type == FUTEX_FLAG){
-		printf("%-12s  0x%-8x  %-11s  %-11s  %-16llu  ",mfutex_type[e->type],e->lock_ptr,"NULL","NULL",e->start_hold_time);
-		int err,futex_wake_queue_fd =bpf_map__fd(mfutex_skel->maps.futex_wake_queue);
-		struct lock_record_key lookup_key1 = {-1,-1}, next_key;
-		while(!bpf_map_get_next_key(futex_wake_queue_fd, &lookup_key1, &next_key)){
-			// printf("next_key:%x target_ptr:%x\n",next_key,e->lock_ptr);
-			if(next_key.lock_ptr != e->lock_ptr) {
-				lookup_key1 = next_key;
-				continue;//不是目标锁，跳过 
-			}
-			struct per_request per_request = {};
-			err = bpf_map_lookup_elem(futex_wake_queue_fd,&next_key,&per_request);
-			if (err < 0) {
-				// printf(stderr, "failed to lookup info: %d\n", err);
-				lookup_key1 = next_key;
-				continue;//不是目标锁，跳过 
-			}
-			
-			float wait_delay = (e->start_hold_time-per_request.start_request_time)/1000000000.0;
-			if(wait_delay<=0||wait_delay>=10000)
-				printf("%d(NULL)| ",per_request.pid);
-			else printf("%d(%ds)| ",per_request.pid,((e->start_hold_time-per_request.start_request_time)/1000000000));
-			err = bpf_map_delete_elem(futex_wake_queue_fd, &next_key);
-			if (err < 0) {
-				fprintf(stderr, "failed to cleanup infos: %d\n", err);
-				return -1;
-			}
-			lookup_key1 = next_key;
-		}
-		printf("\n%-81s","");
-		int err2,futex_wait_queue_fd =bpf_map__fd(mfutex_skel->maps.futex_wait_queue);
-		struct lock_record_key lookup_key2 = {-1,-1};
-		while(!bpf_map_get_next_key(futex_wait_queue_fd, &lookup_key2, &next_key)){
-			// printf("next_key:%x target_ptr:%x\n",next_key,e->lock_ptr);
-			if(next_key.lock_ptr != e->lock_ptr) {
-				lookup_key2 = next_key;
-				continue;//不是目标锁，跳过 
-			}
-			struct per_request per_request = {};
-			err2 = bpf_map_lookup_elem(futex_wait_queue_fd,&next_key,&per_request);
-			if (err2 < 0) {
-				// printf(stderr2, "failed to lookup info: %d\n", err2);
-				lookup_key2 = next_key;
-				continue;//不是目标锁，跳过 
-			}
-			
-			float wait_delay = (e->start_hold_time-per_request.start_request_time)/1000000000.0;
-			if(wait_delay<=0||wait_delay>=10000)
-				printf("%d(NULL)| ",per_request.pid);
-			else printf("%d(%ds)| ",per_request.pid,((e->start_hold_time-per_request.start_request_time)/1000000000));
-			lookup_key2 = next_key;
-		}
-		printf("\n");
-	}
-	printf("\n");
-	// struct record_lock_key key;
-	// key.lock_ptr = e->lock_ptr;
-	// key.cnt = 1;
-	// while(key.cnt<=e->cnt){
-	// 	struct per_request per_request;
-	// 	err = bpf_map_lookup_elem(record_lock_fd,&key,&per_request);
-	// 	if (err < 0) {
-	// 		// fprintf(stderr, "failed to lookup info: %d\n", err);
-	// 		printf("(%llu|%d) ",key.lock_ptr,key.cnt);
-	// 		key.cnt++;
-	// 		continue;//没找到，就去找下一个
-	// 	}
-	// 	printf("%d(%lu)| ",per_request.pid,per_request.wait_delay);
-	// 	key.cnt++;
-	// }
-	// printf("\n");
-	return 0;
-}
-
-static void inline quoted_symbol(char c) {
-	switch(c) {
-		case '"':
-			putchar('\\');
-			putchar('"');
-			break;
-		case '\t':
-			putchar('\\');
-			putchar('t');
-			break;
-		case '\n':
-			putchar('\\');
-			putchar('n');
-			break;
-		default:
-			putchar(c);
-			break;
-	}
-}
-
-static void print_info1(const struct keytime_event *e)
-{
-	int i, args_counter = 0;
-
-	for (i = 0; i < e->info_size && args_counter < e->info_count; i++) {
-		char c = e->char_info[i];
-		if (c == '\0') {
-			args_counter++;
-			putchar(' ');
-		} else {
-			putchar(c);
-		}
-	}
-	if (e->info_count == env.max_args + 1) {
-		fputs(" ...", stdout);
-	}
-}
-
-static void print_info2(const struct keytime_event *e)
-{
-	int i=0;
-
-	for(int tmp=e->info_count; tmp>0 ; tmp--){
-		printf("%llu ",e->info[i++]);
-	}
-}
-
-static void print_stack(unsigned long long address,FILE *file)
-{
-	const struct ksym *ksym;
-
-	ksym = ksyms__map_addr(ksyms, address);
-	if (ksym)
-		fprintf(file, "0x%llx %s+0x%llx\n", address, ksym->name, address - ksym->addr);
-	else
-		fprintf(file, "0x%llx [unknown]\n", address);
-}
-
-static int print_keytime(void *ctx, void *data,unsigned long data_sz)
-{
-	const struct keytime_event *e = data;
-	const struct offcpu_event *offcpu_event = data;
-	bool is_offcpu = false;
-	time_t now = time(NULL);
-    struct tm *localTime = localtime(&now);
-    int hour = localTime->tm_hour;
-    int min = localTime->tm_min;
-    int sec = localTime->tm_sec;
-	int kt_cur_tgid = 0;
-
-	if(e->tgid != -1)	kt_cur_tgid = 2;
-	else	kt_cur_tgid = 1;
-
-	if(e->type == 11){
-		is_offcpu = true;
-	}
-	
-	if(prev_image != KEYTIME_IMAGE || env.kt_prev_tgid != kt_cur_tgid){
-        printf("KEYTIME -------------------------------------------------------------------------------------------------\n");
-        printf("%-8s  ","TIME");
-		if(e->tgid != -1){
-			printf("%-6s  ","TGID");
-			env.kt_prev_tgid = 2;
-		} else {
-			env.kt_prev_tgid = 1;
-		}
-		printf("%-6s  %-15s  %s\n","PID","EVENT","ARGS/RET/OTHERS");
-
-		prev_image = KEYTIME_IMAGE;
-    }
-
-	printf("%02d:%02d:%02d  ",hour,min,sec);
-	if(e->tgid != -1)	printf("%-6d  ",e->tgid);
-	if(!is_offcpu){
-		printf("%-6d  %-15s  ",e->pid,keytime_type[e->type]);
-		if(e->type==4 || e->type==5 || e->type==6 || e->type==7 || e->type==8 || e->type==9){
-			printf("child_pid:");
-		}
-		if(e->type == 10){
-			printf("oncpu_time:");
-		}
-		if(e->enable_char_info){
-			print_info1(e);
-		}else{
-			print_info2(e);
-		}
-	}else{
-		printf("%-6d  %-15s  offcpu_time:%llu",offcpu_event->pid,keytime_type[offcpu_event->type],offcpu_event->offcpu_time);
-		// 将进程下CPU时的调用栈信息写入 .output/offcpu_stack.txt 中（包括时分秒时间、offcpu_time、pid、tgid、调用栈）
-		// 每写入100次清空一次然后重写
-		int count = offcpu_event->kstack_sz / sizeof(long long unsigned int);
-		if(env.stack_count < 100){
-			FILE *file = fopen("./.output/data/offcpu_stack.txt", "a");
-			fprintf(file, "TIME:%02d:%02d:%02d  ", hour,min,sec);
-			if(offcpu_event->tgid != -1)	fprintf(file, "TGID:%-6d  ",offcpu_event->tgid);
-			fprintf(file, "PID:%-6d  OFFCPU_TIME:%llu\n",offcpu_event->pid,offcpu_event->offcpu_time);
-			for(int i=0 ; i<count ; i++){
-				print_stack(offcpu_event->kstack[i],file);
-			}
-			fprintf(file, "\n");
-			fclose(file);
-			env.stack_count++;
-		}else{
-			FILE *file = fopen("./.output/data/offcpu_stack.txt", "w");
-			fprintf(file, "TIME:%02d:%02d:%02d  ", hour,min,sec);
-			if(offcpu_event->tgid != -1)	fprintf(file, "TGID:%-6d  ",offcpu_event->tgid);
-			fprintf(file, "PID:%-6d  OFFCPU_TIME:%llu\n",offcpu_event->pid,offcpu_event->offcpu_time);
-			for(int i=0 ; i<count ; i++){
-				print_stack(offcpu_event->kstack[i],file);
-			}
-			fprintf(file, "\n");
-			fclose(file);
-			env.stack_count = 1;
-		}
-	}
-
-	putchar('\n');
-
-	return 0;
-}
-
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format, va_list args)
 {
 	return vfprintf(stderr, format, args);
 }
 
-static int lock_attach(struct lock_image_bpf *skel)
-{
-	int err;
-	
-	ATTACH_UPROBE_CHECKED(skel,pthread_mutex_lock,pthread_mutex_lock_enter);
-	ATTACH_URETPROBE_CHECKED(skel,pthread_mutex_lock,pthread_mutex_lock_exit);
-	ATTACH_UPROBE_CHECKED(skel,__pthread_mutex_trylock,__pthread_mutex_trylock_enter);
-	ATTACH_URETPROBE_CHECKED(skel,__pthread_mutex_trylock,__pthread_mutex_trylock_exit);
-	ATTACH_UPROBE_CHECKED(skel,pthread_mutex_unlock,pthread_mutex_unlock_enter);
-	ATTACH_URETPROBE_CHECKED(skel,pthread_mutex_unlock,pthread_mutex_unlock_exit);
-	
-	ATTACH_UPROBE_CHECKED(skel,__pthread_rwlock_rdlock,__pthread_rwlock_rdlock_enter);
-	ATTACH_URETPROBE_CHECKED(skel,__pthread_rwlock_rdlock,__pthread_rwlock_rdlock_exit);
-	ATTACH_UPROBE_CHECKED(skel,__pthread_rwlock_tryrdlock,__pthread_rwlock_tryrdlock_enter);
-	ATTACH_URETPROBE_CHECKED(skel,__pthread_rwlock_tryrdlock,__pthread_rwlock_tryrdlock_exit);
-	
-	ATTACH_UPROBE_CHECKED(skel,__pthread_rwlock_wrlock,__pthread_rwlock_wrlock_enter);
-	ATTACH_URETPROBE_CHECKED(skel,__pthread_rwlock_wrlock,__pthread_rwlock_wrlock_exit);
-	ATTACH_UPROBE_CHECKED(skel,__pthread_rwlock_trywrlock,__pthread_rwlock_trywrlock_enter);
-	ATTACH_URETPROBE_CHECKED(skel,__pthread_rwlock_trywrlock,__pthread_rwlock_trywrlock_exit);
-	
-	ATTACH_UPROBE_CHECKED(skel,__pthread_rwlock_unlock,__pthread_rwlock_unlock_enter);
-	ATTACH_URETPROBE_CHECKED(skel,__pthread_rwlock_unlock,__pthread_rwlock_unlock_exit);
 
-	ATTACH_UPROBE_CHECKED(skel,pthread_spin_lock,pthread_spin_lock_enter);
-	ATTACH_URETPROBE_CHECKED(skel,pthread_spin_lock,pthread_spin_lock_exit);
-	ATTACH_UPROBE_CHECKED(skel,pthread_spin_trylock,pthread_spin_trylock_enter);
-	ATTACH_URETPROBE_CHECKED(skel,pthread_spin_trylock,pthread_spin_trylock_exit);
-	ATTACH_UPROBE_CHECKED(skel,pthread_spin_unlock,pthread_spin_unlock_enter);
-	ATTACH_URETPROBE_CHECKED(skel,pthread_spin_unlock,pthread_spin_unlock_exit);
-	
-	err = lock_image_bpf__attach(skel);
-	CHECK_ERR(err, "Failed to attach BPF lock skeleton");
-	
-	return 0;
-}
-static int mfutex_attach(struct mfutex_bpf *skel)
-{
-	int err;
-	
-	ATTACH_UPROBE_CHECKED(skel,pthread_mutex_lock,pthread_mutex_lock_enter);
-	ATTACH_URETPROBE_CHECKED(skel,pthread_mutex_lock,pthread_mutex_lock_exit);
-	// ATTACH_UPROBE_CHECKED(skel,__pthread_mutex_trylock,__pthread_mutex_trylock_enter);
-	// ATTACH_URETPROBE_CHECKED(skel,__pthread_mutex_trylock,__pthread_mutex_trylock_exit);
-	ATTACH_UPROBE_CHECKED(skel,pthread_mutex_unlock,pthread_mutex_unlock_enter);
-	
-	// ATTACH_URETPROBE_CHECKED(skel,pthread_mutex_unlock,pthread_mutex_unlock_exit);
-	
-	
-	err = mfutex_bpf__attach(skel);
-	CHECK_ERR(err, "Failed to attach BPF mfutex skeleton");
-	
-	return 0;
-}
-
-static int keytime_attach(struct keytime_image_bpf *skel)
-{
-	int err;
-
-	ATTACH_URETPROBE_CHECKED(skel,fork,fork_exit);
-	ATTACH_URETPROBE_CHECKED(skel,vfork,vfork_exit);
-	ATTACH_UPROBE_CHECKED(skel,pthread_create,pthread_create_enter);
-	ATTACH_URETPROBE_CHECKED(skel,pthread_create,pthread_create_exit);
-
-	err = keytime_image_bpf__attach(skel);
-	CHECK_ERR(err, "Failed to attach BPF keytime skeleton");
-
-	return 0;
-}
-// resourse和schedule每一秒收集一次数据
-void *enable_function(void *arg) {
-    env.create_thread = true;
-    sleep(1);
-    if(env.enable_resource)	env.output_resourse = true;
-	if(env.enable_schedule)	env.output_schedule = true;
-    env.create_thread = false;
-    env.exit_thread = true;
-
-    return NULL;
-}
 
 static void sig_handler(int signo)
 {
 	exiting = true;
 }
 
-void get_hostname() {
-    char hostname[64];
-    int result = gethostname(hostname, sizeof(hostname));
-    if (result == 0) {
-        strcpy(env.hostname,hostname); 
-    } else {
-        perror("gethostname");
-    }
-}
-
 int main(int argc, char **argv)
 {
-	struct bpf_map *rsc_ctrl_map = NULL;
 	struct ring_buffer *syscall_rb = NULL;
 	struct bpf_map *sc_ctrl_map = NULL;
-	struct ring_buffer *lock_rb = NULL;
-	struct bpf_map *lock_ctrl_map = NULL;
-	struct ring_buffer *keytime_rb = NULL;
-	struct bpf_map *kt_ctrl_map = NULL;
 	struct ring_buffer *sched_rb = NULL;
 	struct bpf_map *sched_ctrl_map = NULL;
-	struct ring_buffer *mfutex_rb = NULL;
-	struct bpf_map *mfutex_ctrl_map = NULL;
-	pthread_t thread_enable;
+
 	int key = 0;
 	int err;
 	static const struct argp argp = {
@@ -884,48 +327,16 @@ int main(int argc, char **argv)
 	if (err)
 		return err;
 	
-	env.ignore_tgid = getpid();
+	env.self_tgid = getpid();
 
 	libbpf_set_strict_mode(LIBBPF_STRICT_ALL);
 	/* 设置libbpf错误和调试信息回调 */
 	libbpf_set_print(libbpf_print_fn);
 
 	signal(SIGINT, sig_handler);
-	//signal(SIGTERM, sig_handler);
+	// signal(SIGTERM, sig_handler);
 
-	if(env.enable_resource){
-		resource_skel = resource_image_bpf__open();
-		if(!resource_skel) {
-			fprintf(stderr, "Failed to open BPF resource skeleton\n");
-			return 1;
-		}
 
-		resource_skel->rodata->ignore_tgid = env.ignore_tgid;
-
-		err = resource_image_bpf__load(resource_skel);
-		if (err) {
-			fprintf(stderr, "Failed to load and verify BPF resource skeleton\n");
-			goto cleanup;
-		}
-
-		err = common_pin_map(&rsc_ctrl_map,resource_skel->obj,"rsc_ctrl_map",rsc_ctrl_path);
-		if(err < 0){
-			goto cleanup;
-		}
-		rscmap_fd = bpf_map__fd(rsc_ctrl_map);
-		struct rsc_ctrl init_value= {false,-1,-1,false,-1};
-		err = bpf_map_update_elem(rscmap_fd, &key, &init_value, 0);
-		if(err < 0){
-			fprintf(stderr, "Failed to update elem\n");
-			goto cleanup;
-		}
-
-		err = resource_image_bpf__attach(resource_skel);
-		if (err) {
-			fprintf(stderr, "Failed to attach BPF resource skeleton\n");
-			goto cleanup;
-		}
-	}
 
 	if(env.enable_syscall){
 		syscall_skel = syscall_image_bpf__open();
@@ -933,10 +344,6 @@ int main(int argc, char **argv)
 			fprintf(stderr, "Failed to open BPF syscall skeleton\n");
 			return 1;
 		}
-
-		// syscall_skel->rodata->ignore_tgid = env.ignore_tgid;
-		// get_hostname();
-		// strcpy(syscall_skel->rodata->hostname,env.hostname);
 		
 		err = syscall_image_bpf__load(syscall_skel);
 		if (err) {
@@ -978,147 +385,8 @@ int main(int argc, char **argv)
 		}
 	}
 
-	if(env.enable_lock){
-		lock_skel = lock_image_bpf__open();
-		if (!lock_skel) {
-			fprintf(stderr, "Failed to open BPF lock skeleton\n");
-			return 1;
-		}
-
-		lock_skel->rodata->ignore_tgid = env.ignore_tgid;
-
-		err = lock_image_bpf__load(lock_skel);
-		if (err) {
-			fprintf(stderr, "Failed to load and verify BPF lock skeleton\n");
-			goto cleanup;
-		}
-		
-		err = common_pin_map(&lock_ctrl_map,lock_skel->obj,"lock_ctrl_map",lock_ctrl_path);
-		if(err < 0){
-			goto cleanup;
-		}
-		lockmap_fd = bpf_map__fd(lock_ctrl_map);
-		struct lock_ctrl init_value = {false,false,-1,-1};
-		err = bpf_map_update_elem(lockmap_fd, &key, &init_value, 0);
-		if(err < 0){
-			fprintf(stderr, "Failed to update elem\n");
-			goto cleanup;
-		}
-
-		/* 附加跟踪点处理程序 */
-		err = lock_attach(lock_skel);
-		if (err) {
-			fprintf(stderr, "Failed to attach BPF lock skeleton\n");
-			goto cleanup;
-		}
-		
-		/* 设置环形缓冲区轮询 */
-		//ring_buffer__new() API，允许在不使用额外选项数据结构下指定回调
-		lock_rb = ring_buffer__new(bpf_map__fd(lock_skel->maps.lock_rb), print_lock, NULL, NULL);
-		if (!lock_rb) {
-			err = -1;
-			fprintf(stderr, "Failed to create lock ring buffer\n");
-			goto cleanup;
-		}
-	}
-
-	if(env.enable_mfutex){
-		mfutex_skel = mfutex_bpf__open();
-		if (!mfutex_skel) {
-			fprintf(stderr, "Failed to open BPF mfutex skeleton\n");
-			return 1;
-		}
-
-		mfutex_skel->rodata->ignore_tgid = env.ignore_tgid;
-
-		err = mfutex_bpf__load(mfutex_skel);
-		if (err) {
-			fprintf(stderr, "Failed to load and verify BPF mfutex skeleton\n");
-			goto cleanup;
-		}
-		
-		err = common_pin_map(&mfutex_ctrl_map,mfutex_skel->obj,"mfutex_ctrl_map",mfutex_ctrl_path);
-		if(err < 0){
-			goto cleanup;
-		}
-		mfutexmap_fd = bpf_map__fd(mfutex_ctrl_map);
-		struct mfutex_ctrl init_value = {false,false,-1,-1};
-		err = bpf_map_update_elem(mfutexmap_fd, &key, &init_value, 0);
-		if(err < 0){
-			fprintf(stderr, "Failed to update elem\n");
-			goto cleanup;
-		}
-
-		/* 附加跟踪点处理程序 */
-		err = mfutex_attach(mfutex_skel);
-		if (err) {
-			fprintf(stderr, "Failed to attach BPF mfutex skeleton\n");
-			goto cleanup;
-		}
-		
-		/* 设置环形缓冲区轮询 */
-		//ring_buffer__new() API，允许在不使用额外选项数据结构下指定回调
-		mfutex_rb = ring_buffer__new(bpf_map__fd(mfutex_skel->maps.mfutex_rb), print_mfutex, NULL, NULL);
-		if (!mfutex_rb) {
-			err = -1;
-			fprintf(stderr, "Failed to create mfutex ring buffer\n");
-			goto cleanup;
-		}
-		printf("============================================ MFutex ============================================\n");
-		printf("%-8s   %-12s  %-10s  %-11s  %-11s  %-16s  %-15s\n","TIME","LOCK_TYPE","LOCK_Addr","Last_Holder","Last_Delay","HoldTime","Waker/Waiter");
-	}
-
-	if(env.enable_keytime){
-		keytime_skel = keytime_image_bpf__open();
-		if (!keytime_skel) {
-			fprintf(stderr, "Failed to open BPF keytime skeleton\n");
-			return 1;
-		}
-
-		keytime_skel->rodata->ignore_tgid = env.ignore_tgid;
-
-		err = keytime_image_bpf__load(keytime_skel);
-		if (err) {
-			fprintf(stderr, "Failed to load and verify BPF keytime skeleton\n");
-			goto cleanup;
-		}
-
-		sched_ksyms = ksyms__load();
-		if (!sched_ksyms) {
-			fprintf(stderr, "failed to load kallsyms\n");
-			goto cleanup;
-		}
-
-		err = common_pin_map(&kt_ctrl_map,keytime_skel->obj,"kt_ctrl_map",kt_ctrl_path);
-		if(err < 0){
-			goto cleanup;
-		}
-		ktmap_fd = bpf_map__fd(kt_ctrl_map);
-		struct kt_ctrl init_value = {false,false,false,-1,-1};
-		err = bpf_map_update_elem(ktmap_fd, &key, &init_value, 0);
-		if(err < 0){
-			fprintf(stderr, "Failed to update elem\n");
-			goto cleanup;
-		}
-		
-		/* 附加跟踪点处理程序 */
-		err = keytime_attach(keytime_skel);
-		if (err) {
-			fprintf(stderr, "Failed to attach BPF keytime skeleton\n");
-			goto cleanup;
-		}
-		
-		/* 设置环形缓冲区轮询 */
-		//ring_buffer__new() API，允许在不使用额外选项数据结构下指定回调
-		keytime_rb = ring_buffer__new(bpf_map__fd(keytime_skel->maps.keytime_rb), print_keytime, NULL, NULL);
-		if (!keytime_rb) {
-			err = -1;
-			fprintf(stderr, "Failed to create keytime ring buffer\n");
-			goto cleanup;
-		}
-	}
-
 	if(env.enable_schedule){
+		printf("enter enable_sched\n");
 		schedule_skel = schedule_image_bpf__open();
 		if(!schedule_skel) {
 			fprintf(stderr, "Failed to open BPF schedule skeleton\n");
@@ -1173,6 +441,7 @@ int main(int argc, char **argv)
 			goto cleanup;
 		}
 		schedule_fd = open(schedule_out_path, O_RDWR | O_CREAT | O_TRUNC, 0666);
+		printf("schedule fd: %d\n", schedule_fd);
 		if(schedule_fd < 0) {
 			err = -1;
 			fprintf(stderr, "Failed to create schedule out file\n");
@@ -1182,39 +451,6 @@ int main(int argc, char **argv)
 	printf("1\n");
 	/* 处理事件 */
 	while (!exiting) {
-		if(env.enable_resource || env.enable_schedule){
-			// 等待新线程结束，回收资源
-			if(env.exit_thread){
-				env.exit_thread = false;
-				if (pthread_join(thread_enable, NULL) != 0) {
-					perror("pthread_join");
-					exit(EXIT_FAILURE);
-				}
-			}
-
-			// 创建新线程，设置 output
-			if(!env.create_thread){
-				printf("a second pass\n");
-
-				if (pthread_create(&thread_enable, NULL, enable_function, NULL) != 0) {
-					perror("pthread_create");
-					exit(EXIT_FAILURE);
-				}
-			}
-		}
-
-		if(env.enable_resource && env.output_resourse){
-			err = print_resource(resource_skel->maps.total,rscmap_fd);
-			/* Ctrl-C will cause -EINTR */
-			if (err == -EINTR) {
-				err = 0;
-				break;
-			}
-			if (err < 0) {
-				break;
-			}
-		}
-
 		if(env.enable_syscall){
 			err = ring_buffer__poll(syscall_rb, 0);
 			/* Ctrl-C will cause -EINTR */
@@ -1228,44 +464,6 @@ int main(int argc, char **argv)
 			}
 		}
 
-		if(env.enable_lock){
-			err = ring_buffer__poll(lock_rb, 0);
-			/* Ctrl-C will cause -EINTR */
-			if (err == -EINTR) {
-				err = 0;
-				break;
-			}
-			if (err < 0) {
-				printf("Error polling lock ring buffer: %d\n", err);
-				break;
-			}
-		}
-
-		if(env.enable_mfutex){
-			err = ring_buffer__poll(mfutex_rb, 2000);
-			/* Ctrl-C will cause -EINTR */
-			if (err == -EINTR) {
-				err = 0;
-				break;
-			}
-			if (err < 0) {
-				printf("Error polling mfutex ring buffer: %d\n", err);
-				break;
-			}
-		}
-
-		if(env.enable_keytime){
-			err = ring_buffer__poll(keytime_rb, 0);
-			/* Ctrl-C will cause -EINTR */
-			if (err == -EINTR) {
-				err = 0;
-				break;
-			}
-			if (err < 0) {
-				printf("Error polling keytime ring buffer: %d\n", err);
-				break;
-			}
-		}
 		if(env.enable_schedule){
 			err = ring_buffer__poll(sched_rb, 0);
 			/* Ctrl-C will cause -EINTR */
@@ -1282,33 +480,13 @@ int main(int argc, char **argv)
 
 /* 卸载BPF程序 */
 cleanup:
-	if(env.enable_resource){
-		bpf_map__unpin(rsc_ctrl_map, rsc_ctrl_path);
-		resource_image_bpf__destroy(resource_skel);
-	}
 	if(env.enable_syscall){
 		bpf_map__unpin(sc_ctrl_map, sc_ctrl_path);
 		ring_buffer__free(syscall_rb);
-		hashmap_free(map);
 		syscall_image_bpf__destroy(syscall_skel);
 		close(syscall_fd);
 	}
-	if(env.enable_lock){
-		bpf_map__unpin(lock_ctrl_map, lock_ctrl_path);
-		ring_buffer__free(lock_rb);
-		lock_image_bpf__destroy(lock_skel);
-	}
-	if(env.enable_mfutex){
-		bpf_map__unpin(mfutex_ctrl_map, mfutex_ctrl_path);
-		ring_buffer__free(mfutex_rb);
-		mfutex_bpf__destroy(mfutex_skel);
-	}
-	if(env.enable_keytime){
-		bpf_map__unpin(kt_ctrl_map, kt_ctrl_path);
-		ksyms__free(ksyms);
-		ring_buffer__free(keytime_rb);
-		keytime_image_bpf__destroy(keytime_skel);
-	}
+
 	if(env.enable_schedule){
 		bpf_map__unpin(sched_ctrl_map, sched_ctrl_path);
 		ring_buffer__free(sched_rb);

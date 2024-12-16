@@ -1,20 +1,3 @@
-// Copyright 2023 The LMP Authors.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// https://github.com/linuxkerneltravel/lmp/blob/develop/LICENSE
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-//
-// author: zhangziheng0525@163.com
-//
-// used to control the execution of proc_image tool
 #include <stdio.h>
 #include <stdbool.h>
 #include <argp.h>
@@ -33,45 +16,20 @@ static struct env {
     // 1代表activate；2代表deactivate；3代表finish
     int usemode;
     int pid;
-	int tgid;
-    int cpu_id;
     int time;
     int syscalls;
     bool enable_myproc;
-    bool output_resourse;
 	bool output_schedule;
-    bool create_thread;
-	bool exit_thread;
-    bool enable_resource;
-    bool first_rsc;
-    bool enable_cpu;
-    bool enable_keytime;
-    bool enable_lock;
     bool enable_syscall;
     bool enable_schedule;
-    bool enable_mfutex;
-    bool is_container;
 }  env = {
     .usemode = 0,
     .pid = -1,
-	.tgid = -1,
-    .cpu_id = -1,
-    .time = 0,
     .syscalls = 0,
 	.enable_myproc = false,
-	.output_resourse = false,
 	.output_schedule = false,
-	.create_thread = false,
-	.exit_thread = false,
-    .enable_resource = false,
-	.first_rsc = true,
-    .enable_cpu = false,
-    .enable_keytime = false,
-    .enable_lock = false,
     .enable_syscall = false,
     .enable_schedule = false,
-    .is_container = false,
-    .enable_mfutex = false,
 };
 
 const char argp_program_doc[] ="Trace process to get process image.\n";
@@ -81,28 +39,18 @@ static const struct argp_option opts[] = {
     { "deactivate", 'd', NULL, 0, "Initialize to the original deactivated state" },
     { "finish", 'f', NULL, 0, "Finish to run eBPF tool" },
 	{ "pid", 'p', "PID", 0, "Process ID to trace" },
-    { "tgid", 'P', "TGID", 0, "Thread group to trace" },
-    { "containerproc", 'o', NULL, 0, "Thread of containerproc to trace" },
-    { "cpuid", 'c', "CPUID", 0, "Set For Tracing  per-CPU Process(other processes don't need to set this parameter)" },
     { "time", 't', "TIME-SEC", 0, "Max Running Time(0 for infinite)" },
     { "myproc", 'm', NULL, 0, "Trace the process of the tool itself (not tracked by default)" },
-    { "resource", 'r', NULL, 0, "Collects resource usage information about processes" },
-    { "keytime", 'k', "KEYTIME", 0, "Collects keytime information about processes(0:except CPU kt_info,1:all kt_info,any 0 or 1 when deactivated)" },
-    { "lock", 'l', NULL, 0, "Collects lock information about processes" },
-    { "syscall", 's', "SYSCALLS", 0, "Collects syscall sequence (1~50) information about processes(any 1~50 when deactivated)" },
+    { "syscall", 's', "NULL", 0, "Collects syscall sequence (1~50) information about processes(any 1~50 when deactivated)" },
     { "schedule", 'S', NULL, 0, "Collects schedule information about processes (trace tool process)" },
-    { "mfutex", 'M', NULL, 0, "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" },
-    { NULL, 'h', NULL, OPTION_HIDDEN, "show the full help" },
+    { NULL, 'h', NULL, OPTION_HIDDEN, "show the help" },
     {},
 };
 
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
     long pid;
-	long tgid;
-	long cpu_id;
-    long syscalls;
-    long enable_cpu;
+
     switch (key) {
         case 'a':
             env.usemode = 1;
@@ -123,64 +71,18 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 				}
 				env.pid = pid;
 				break;
-        case 'P':
-				errno = 0;
-				tgid = strtol(arg, NULL, 10);
-				if (errno || tgid < 0) {
-					warn("Invalid TGID: %s\n", arg);
-					// 调用argp_usage函数，用于打印用法信息并退出程序
-					argp_usage(state);
-				}
-				env.tgid = tgid;
-				break;
-		case 'c':
-				errno = 0;
-                cpu_id = strtol(arg, NULL, 10);
-				if(cpu_id < 0){
-					warn("Invalid CPUID: %s\n", arg);
-					argp_usage(state);
-				}
-				env.cpu_id = cpu_id;
+        case 'm':
+				env.enable_myproc = true;
 				break;
 		case 't':
 				env.time = strtol(arg, NULL, 10);
 				if(env.time) alarm(env.time);
 				break;
-		case 'm':
-				env.enable_myproc = true;
-				break;
-        case 'o':
-				env.is_container = true;
-				break;
-		case 'r':
-				env.enable_resource = true;
-				break;
-        case 'k':
-                enable_cpu = strtol(arg, NULL, 10);
-                if(enable_cpu<0 || enable_cpu>1){
-					warn("Invalid KEYTIME: %s\n", arg);
-					argp_usage(state);
-				}
-                env.enable_cpu = enable_cpu;
-                env.enable_keytime = true;
-                break;
-        case 'l':
-                env.enable_lock = true;
-                break;
         case 's':
-                syscalls = strtol(arg, NULL, 10);
-				if(syscalls<=0 || syscalls>50){
-					warn("Invalid SYSCALLS: %s\n", arg);
-					argp_usage(state);
-				}
-				// env.syscalls = syscalls;
 				env.enable_syscall = true;
                 break;
         case 'S':
                 env.enable_schedule = true;
-                break;
-        case 'M':
-                env.enable_mfutex = true;
                 break;
         case 'h':
 				argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
@@ -194,25 +96,6 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 
 int deactivate_mode(){
     int err;
-
-    if(env.enable_resource){
-        struct rsc_ctrl rsc_ctrl = {false,-1,-1,false,-1};
-        err = update_rsc_ctrl_map(rsc_ctrl);
-        if(err < 0) return err;
-    }
-
-    if(env.enable_keytime){
-        struct kt_ctrl kt_ctrl = {false,false,false,-1,-1};
-        err = update_kt_ctrl_map(kt_ctrl);
-        if(err < 0) return err;
-    }
-
-    if(env.enable_lock){
-        struct lock_ctrl lock_ctrl = {false,false,-1,-1};
-        err = update_lock_ctrl_map(lock_ctrl);
-        if(err < 0) return err;
-    }
-
     if(env.enable_syscall){
         struct sc_ctrl sc_ctrl = {false,-1};
         err = update_sc_ctrl_map(sc_ctrl);
@@ -222,12 +105,6 @@ int deactivate_mode(){
     if(env.enable_schedule){
         struct sched_ctrl sched_ctrl = {false,-1};
         err = update_sched_ctrl_map(sched_ctrl);
-        if(err < 0) return err;
-    }
-
-    if(env.enable_mfutex){
-        struct mfutex_ctrl mfutex_ctrl = {false,false,-1,-1};
-        err = update_mfutex_ctrl_map(mfutex_ctrl);
         if(err < 0) return err;
     }
 
@@ -257,30 +134,6 @@ int main(int argc, char **argv)
 	signal(SIGTERM,sig_handler);
     // update_xx_ctrl_map()可以优化
     if(env.usemode == 1){                   // activate mode
-        if(env.enable_resource){
-            struct rsc_ctrl rsc_ctrl = {true, env.pid, env.cpu_id, env.enable_myproc, env.tgid};
-            err = update_rsc_ctrl_map(rsc_ctrl);
-            if(err < 0) return err;
-        }
-
-        if(env.enable_keytime){
-            struct kt_ctrl kt_ctrl = {true,env.enable_cpu,env.enable_myproc,env.pid,env.tgid};
-            err = update_kt_ctrl_map(kt_ctrl);
-            if(err < 0) return err;
-        }
-
-        if(env.enable_lock){
-            struct lock_ctrl lock_ctrl = {true,env.enable_myproc,env.pid,env.tgid};
-            err = update_lock_ctrl_map(lock_ctrl);
-            if(err < 0) return err;
-        }
-
-        if(env.enable_mfutex){
-            struct mfutex_ctrl mfutex_ctrl = {true,env.enable_myproc,env.pid,env.tgid};
-            err = update_mfutex_ctrl_map(mfutex_ctrl);
-            if(err < 0) return err;
-        }
-
         if(env.enable_syscall){
             printf("syscall\n");
             struct sc_ctrl sc_ctrl = {true,env.pid};
